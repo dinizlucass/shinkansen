@@ -1,0 +1,15 @@
+
+> my-v0-project@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.15.25:3000
+- Environments: .env
+✓ Ready in 463ms
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+
+ PATCH /api/external/profiles/by-email 401 in 264ms (next.js: 162ms, proxy.ts: 80ms, application-code: 22ms)
+ PATCH /api/external/orders/60564272-9b6d-4723-8836-b9fb87422bc8 200 in 1543ms (next.js: 696ms, proxy.ts: 7ms, application-code: 840ms)
+ PATCH /api/external/orders/60564272-9b6d-4723-8836-b9fb87422bc8 200 in 2.2s (next.js: 13ms, proxy.ts: 4ms, application-code: 2.2s)
+ PATCH /api/external/profiles/by-email 200 in 464ms (next.js: 3ms, proxy.ts: 4ms, application-code: 457ms)
