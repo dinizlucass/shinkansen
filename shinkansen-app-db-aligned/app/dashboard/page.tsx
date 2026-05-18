@@ -12,7 +12,7 @@ export default async function DashboardPage() {
   }
 
   // Fetch user's orders
-  const { data: orders } = await supabase
+  const { data: orders, error } = await supabase
     .from("orders")
     .select(`
       id,
@@ -30,7 +30,6 @@ export default async function DashboardPage() {
         film_type,
         push_pull,
         notes,
-        scan_type,
         file_format,
         status,
         created_at,
@@ -41,14 +40,14 @@ export default async function DashboardPage() {
         )
       )
     `)
-    .eq("client_id", user.id)
+    //.eq("client_id", user.id)
     .order("created_at", { ascending: false })
-
+ 
   // Fetch user's profile
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, full_name, phone, photo_link")
-    .eq("id", user.id)
+    //.eq("id", user.id)
     .single()
 
   const hydratedProfile = profile

@@ -43,7 +43,7 @@ export function HomeClient({ user }: HomeClientProps) {
 
           <SlideIn direction="left" delay={0.4}>
             <p className="text-muted-foreground font-mono text-sm mb-8 max-w-md">
-              Servicos profissionais de revelacao. Processamento de qualidade para filmes 35mm e 120.
+              Serviços de revelação e digitalização. Processamento de qualidade para todo tipo de filme em
               C-41, ECN-2 e P&amp;B.
             </p>
           </SlideIn>
@@ -156,7 +156,7 @@ export function HomeClient({ user }: HomeClientProps) {
       </div>
 
       <footer className="relative z-10 px-8 py-4 flex justify-between items-center text-xs font-mono text-muted-foreground border-t border-border bg-background/80 backdrop-blur">
-        <span>SKS v1.0</span>
+        <span>SKS v0.3</span>
         <span>DESDE 2026</span>
       </footer>
     </div>

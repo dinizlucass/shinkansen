@@ -34,7 +34,7 @@ const navItems: NavItem[] = [
   {
     href: "/orders",
     label: "NOVO PEDIDO",
-    description: "Envie seus filmes para revelacao",
+    description: "Envie seus filmes para revelação",
     icon: <Camera className="h-5 w-5" />,
     requiresAuth: true,
   },
@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
   {
     href: "/account",
     label: "CONTA",
-    description: "Complete seus dados e ajustes",
+    description: "Complete seus dados e ajuste",
     icon: <User className="h-5 w-5" />,
     requiresAuth: true,
   },
@@ -113,7 +113,7 @@ export function GameMenuNav({ user, variant = "vertical" }: GameMenuNavProps) {
                   </motion.div>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="bg-card border-primary">
-                  <p className="font-mono text-xs">{navItem.description}</p>
+                  <p className="font-mono text-zinc-500 text-xs">{navItem.description}</p>
                 </TooltipContent>
               </Tooltip>
             )
@@ -158,7 +158,7 @@ export function GameMenuNav({ user, variant = "vertical" }: GameMenuNavProps) {
                 </motion.div>
               </TooltipTrigger>
               <TooltipContent side="right" className="bg-card border-primary">
-                <p className="font-mono text-sm">{navItem.description}</p>
+                <p className="font-mono text-zinc-500 text-sm">{navItem.description}</p>
               </TooltipContent>
             </Tooltip>
           )

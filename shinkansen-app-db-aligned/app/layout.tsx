@@ -9,25 +9,24 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Shinkansen Films | Revelacao e digitalizacao de filmes",
-  description: "Laboratorio fotografico com revelacao, digitalizacao e acompanhamento online dos pedidos.",
-  generator: 'v0.app',
+  title: "Shinkansen Films | Revelação e digitalização de filmes",
+  description: "Laboratorio fotografico com revelação, digitalização e acompanhamento online dos pedidos.",
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
+        url: '/favicon.ico',
         media: '(prefers-color-scheme: light)',
       },
       {
-        url: '/icon-dark-32x32.png',
+        url: '/favicon.ico',
         media: '(prefers-color-scheme: dark)',
       },
       {
-        url: '/icon.svg',
+        url: '/favicon.ico',
         type: 'image/svg+xml',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: '/favicon.ico',
   },
 }
 

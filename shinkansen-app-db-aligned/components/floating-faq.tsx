@@ -10,27 +10,33 @@ import { Button } from "@/components/ui/button"
 const faqItems = [
   {
     id: "faq-1",
-    question: "Lorem ipsum dolor sit amet?",
+    question: "O que é revelação?",
     answer:
-      "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+      "Revelação é o processo quimico que ocorre para tornar a imagem visível e permanente no filme fotografico. O resultado final é um filme (negativo) com a imagem fixada. O processo de revelação é irreversivel e não é o mesmo que ampliação (impressão) de fotos, esse é  um processo seguinte.",
   },
   {
     id: "faq-2",
-    question: "Consectetur adipiscing elit?",
+    question: "O que é filme Virgem e filme Velado?",
     answer:
-      "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
+      "Filme Virgem: É o rolo de filme fotográfico novo, que ainda não foi exposto à luz. A sua emulsão está intacta e pronta para gravar fotos.  Filme Velado: É o filme que sofreu uma exposição acidental e excessiva à luz externa (fora da câmara), seja por abrir a tampa traseira da câmara ou por vazamento de luz no rolo. Esta luz indesejada queima a emulsão, inutilizando ou manchando as fotos permanentemente.",
   },
   {
     id: "faq-3",
-    question: "Sed do eiusmod tempor?",
+    question: "Qual a diferença entre Jpg, Dng e Raw?",
     answer:
-      "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.",
+      "Jpg é um formato de imagem comprimido (acabado voltado para fotos que não serão editadas), Dng é um formato de imagem não comprimido (acabado voltado para fotos que serão editadas) e Raw é um formato de imagem que contém todos os dados do sensor da câmera (bruto, voltado para quem quer fazer o processo de conversão de cores do 0).",
   },
   {
     id: "faq-4",
-    question: "Ut labore et dolore magna aliqua?",
+    question: "Qual a qualidade da digitalização?",
     answer:
-      "Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.",
+      "Todas as digitalizações são feitas com alta qualidade (24mp 14bits), utilizando o mesmo equipamento (Sony Alpha 7II + Takumar 50mm f4).",
+  },
+  {
+    id: "faq-5",
+    question: "Qual a diferença entre Digitalização com trilhas e tradicional?",
+    answer:
+      "A digitalização tradicional inclui apenas o fotograma enquanto a digitalização com trilhas mantém tambem a perfuração do filme na imagem final.",
   },
 ]
 

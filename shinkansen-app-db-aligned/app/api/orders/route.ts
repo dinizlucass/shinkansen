@@ -13,6 +13,24 @@ import {
   type CreateOrderInput,
 } from "@/lib/validators/orders"
 
+interface Service {
+  id: string | number
+  name: string
+  price: number
+  category: string
+  ui_id: string | null
+}
+
+function hasService(
+  film: CreateOrderInput["films"][number],
+  services: Service[],
+  uiId: string
+) {
+  return services.some(
+    (s) => film.serviceIds.includes(String(s.id)) && s.ui_id === uiId
+  )
+}
+
 function signPushPull(n: number): string {
   return n > 0 ? `+${n}` : String(n)
 }
@@ -29,21 +47,39 @@ function normalizeCategory(value: string | null | undefined) {
   return normalized
 }
 
-function composeFilmNotes(film: CreateOrderInput["films"][number]): string | null {
-  const parts: string[] = []
+function isAlreadyDeveloped(
+  film: CreateOrderInput["films"][number],
+  services: Service[]
+) {
+  return hasService(film, services, "s_rev")
+}
 
-  if (film.filmType !== "ja_revelado") {
-    const label = film.filmType === "c41" ? "C-41" : film.filmType === "d76" ? "D-76" : "ECN-2"
-    parts.push(`Revelacao: ${label}`)
-  } else {
+function composeFilmNotes(
+  film: CreateOrderInput["films"][number],
+  services: Service[]
+): string | null {
+  const parts: string[] = []
+  const alreadyDeveloped = isAlreadyDeveloped(film, services)
+
+  if (alreadyDeveloped) {
     parts.push("Ja revelado")
+  } else {
+    parts.push("Revelar")
+  }
+
+  if (film.pushPull !== 0) {
+    parts.push(`Push/Pull: ${signPushPull(film.pushPull)}`)
   }
 
   if (film.observation?.trim()) {
     parts.push(film.observation.trim())
   }
 
-  const notes = parts.join(" | ").trim().slice(0, MAX_FILM_OBSERVATION_LENGTH)
+  const notes = parts
+    .join(" | ")
+    .trim()
+    .slice(0, MAX_FILM_OBSERVATION_LENGTH)
+
   return notes.length ? notes : null
 }
 
@@ -58,7 +94,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return NextResponse.json(
         { ok: false, error: { message: parsed.error.issues[0]?.message ?? "Payload invalido." } },
-        { status: 400 },
+        { status: 400 }
       )
     }
 
@@ -71,7 +107,7 @@ export async function POST(req: Request) {
     if (authError || !user) {
       return NextResponse.json(
         { ok: false, error: { message: "Voce precisa estar logado para criar um pedido." } },
-        { status: 401 },
+        { status: 401 }
       )
     }
 
@@ -86,64 +122,86 @@ export async function POST(req: Request) {
     if (!isProfileComplete(hydratedProfile)) {
       return NextResponse.json(
         { ok: false, error: { message: "Complete seu perfil com nome e telefone antes de criar um pedido." } },
-        { status: 403 },
+        { status: 403 }
       )
     }
 
-    const { data: services, error: servicesError } = await supabase
+    const { data: servicesData, error: servicesError } = await supabase
       .from("services")
-      .select("id, price, category")
+      .select("id, name, price, category, ui_id")
       .eq("active", true)
 
-    if (servicesError) {
+    if (servicesError || !servicesData) {
       return NextResponse.json(
         { ok: false, error: { message: "Nao foi possivel carregar os servicos disponiveis." } },
-        { status: 500 },
+        { status: 500 }
       )
     }
 
+    const services = servicesData as Service[]
     const priceByServiceId = new Map<string, number>()
     const categoryByServiceId = new Map<string, string>()
-    for (const service of services ?? []) {
+
+    for (const service of services) {
       priceByServiceId.set(String(service.id), Number(service.price ?? 0))
       categoryByServiceId.set(String(service.id), normalizeCategory(service.category))
     }
 
+    // Validações de Regras de Negócio
     for (const film of input.films) {
-      if (film.serviceIds.length === 0) {
+      const selectedServices = services.filter((s) => film.serviceIds.includes(String(s.id)))
+      
+      const hasPrimaryService = selectedServices.some((s) =>
+        ["development", "scanning"].includes(normalizeCategory(s.category))
+      )
+      const hasJaRevelado = hasService(film, services, "s_rev")
+      const hasRevealService = selectedServices.some(
+        (s) => normalizeCategory(s.category) === "development" && s.ui_id !== "s_rev"
+      )
+
+      if (!hasPrimaryService) {
         return NextResponse.json(
-          { ok: false, error: { message: "Cada filme precisa ter pelo menos um servico selecionado." } },
-          { status: 400 },
+          { ok: false, error: { message: "Selecione pelo menos um serviço principal para o filme." } },
+          { status: 400 }
         )
       }
 
+      if (!hasJaRevelado && !hasRevealService) {
+        return NextResponse.json(
+          { ok: false, error: { message: "Selecione um tipo de revelação ou marque já revelado." } },
+          { status: 400 }
+        )
+      }
+
+      if (hasJaRevelado) {
+        const invalidReveal = selectedServices.some(
+          (s) => normalizeCategory(s.category) === "development" && s.ui_id !== "s_rev"
+        )
+
+        if (invalidReveal) {
+          return NextResponse.json(
+            { ok: false, error: { message: "Filmes já revelados não podem incluir outro tipo de revelação." } },
+            { status: 400 }
+          )
+        }
+      }
+
+      // Valida IDs de serviços inexistentes/inativos
       for (const serviceId of film.serviceIds) {
         if (!priceByServiceId.has(String(serviceId))) {
           return NextResponse.json(
-            { ok: false, error: { message: "Um ou mais servicos selecionados nao estao disponiveis." } },
-            { status: 400 },
-          )
-        }
-
-        const category = categoryByServiceId.get(String(serviceId))
-        if (film.filmType === "ja_revelado" && category === "development") {
-          return NextResponse.json(
-            { ok: false, error: { message: "Filmes ja revelados nao podem incluir servicos de revelacao." } },
-            { status: 400 },
-          )
-        }
-
-        if (film.scanType === "so_revelar" && category === "scanning") {
-          return NextResponse.json(
-            { ok: false, error: { message: "A opcao so revelar nao pode incluir servicos de digitalizacao." } },
-            { status: 400 },
+            { ok: false, error: { message: "Um ou mais serviços selecionados não estão disponíveis." } },
+            { status: 400 }
           )
         }
       }
     }
 
     const totalValue = input.films.reduce((sum, film) => {
-      const filmSum = film.serviceIds.reduce((acc, serviceId) => acc + (priceByServiceId.get(String(serviceId)) ?? 0), 0)
+      const filmSum = film.serviceIds.reduce(
+        (acc, serviceId) => acc + (priceByServiceId.get(String(serviceId)) ?? 0),
+        0
+      )
       return sum + filmSum
     }, 0)
 
@@ -167,16 +225,23 @@ export async function POST(req: Request) {
     }
 
     const filmRows = input.films.map((film, index) => {
+      const selectedServices = services.filter((s) => film.serviceIds.includes(String(s.id)))
+      const hasScanning = selectedServices.some((s) => normalizeCategory(s.category) === "scanning")
       const name = (film.name?.trim() || `FILME ${index + 1}`).trim()
+      
       const row = filmInsertSchema.parse({
         order_id: order.id,
         name,
-        film_type: film.filmType,
-        push_pull: film.filmType === "ja_revelado" ? null : signPushPull(film.pushPull),
-        notes: composeFilmNotes(film),
-        scan_type: film.scanType,
+        film_type: null,
+        // CORREÇÃO DO BUG: Se JÁ foi revelado, ignora push_pull. Se NÃO foi, aplica.
+        push_pull: isAlreadyDeveloped(film, services) 
+          ? null
+          : film.pushPull !== undefined
+          ? signPushPull(film.pushPull)
+          : null,
+        notes: composeFilmNotes(film, services),
         status: "criado",
-        file_format: film.scanType === "so_revelar" ? null : film.fileFormat,
+        file_format: hasScanning ? film.fileFormat : null,
       })
 
       return {
@@ -200,7 +265,7 @@ export async function POST(req: Request) {
         film_id: film.id,
         service_id: String(serviceId),
         price: priceByServiceId.get(String(serviceId)) ?? 0,
-      })),
+      }))
     )
 
     if (joins.length) {

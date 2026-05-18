@@ -45,7 +45,6 @@ export default async function AdminPage() {
         film_type,
         push_pull,
         notes,
-        scan_type,
         file_format,
         created_at,
         film_services (

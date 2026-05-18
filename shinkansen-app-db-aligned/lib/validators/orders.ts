@@ -1,15 +1,31 @@
-import { z } from 'zod'
+import { z } from "zod"
 
 export const MAX_FILM_OBSERVATION_LENGTH = 999
 
 export const filmEntrySchema = z.object({
   name: z.string().trim().optional().nullable(),
-  filmType: z.enum(['ja_revelado', 'c41', 'd76', 'ecn2']).default('c41'),
+  film_type: z
+  .enum(["c41", "d76", "ecn2"])
+  .nullable()
+  .optional(),
+  // Agora tudo vem dos serviços selecionados
   serviceIds: z.array(z.string().min(1)).default([]),
-  fileFormat: z.enum(['tiff', 'jpg', 'raw']).default('jpg'),
-  scanType: z.enum(['normal', 'com_trilhas', 'normal_e_com_trilhas', 'so_revelar']).default('normal'),
+
+  // Só faz sentido se houver digitalização
+  fileFormat: z
+    .enum(["tiff", "dng", "jpg", "raw"])
+    .nullable()
+    .default(null),
+
+  // Continua existindo apenas para revelação
   pushPull: z.number().int().min(-3).max(3).default(0),
-  observation: z.string().trim().max(MAX_FILM_OBSERVATION_LENGTH).optional().nullable(),
+
+  observation: z
+    .string()
+    .trim()
+    .max(MAX_FILM_OBSERVATION_LENGTH)
+    .optional()
+    .nullable(),
 })
 
 export const createOrderSchema = z.object({
@@ -31,7 +47,7 @@ export const orderStatusEnum = z.enum([
 
 export const filmStatusEnum = z.enum([
   "criado",
-  "cadastrado",
+  "conferido",
   "revelando",
   "digitalizando",
   "suporte",
@@ -40,9 +56,7 @@ export const filmStatusEnum = z.enum([
   "concluido",
 ])
 
-export const filmTypeEnum = z.enum(["c41", "d76", "ecn2", "ja_revelado"])
-export const filmScanTypeEnum = z.enum(["normal","com_trilhas","normal_e_com_trilhas","so_revelar"])
-export const filmFileFormatEnum = z.enum(["tiff", "jpg", "raw"])
+export const filmFileFormatEnum = z.enum(["tiff","dng", "jpg", "raw"])
 export const filmPushPullEnum = z.enum(["-3", "-2", "-1", "0", "+1", "+2", "+3"])
 
 export const orderInsertSchema = z.object({
@@ -57,14 +71,28 @@ export const orderInsertSchema = z.object({
 
 export const filmInsertSchema = z.object({
   order_id: z.string().uuid(),
+
   name: z.string().min(1).max(200),
-  film_type: filmTypeEnum,
+
+  // mantém push/pull
   push_pull: filmPushPullEnum.nullable().optional(),
-  notes: z.string().max(MAX_FILM_OBSERVATION_LENGTH).nullable().optional(),
-  scan_type: filmScanTypeEnum,
+
+  notes: z
+    .string()
+    .max(MAX_FILM_OBSERVATION_LENGTH)
+    .nullable()
+    .optional(),
+
   status: filmStatusEnum.default("criado"),
+
   file_link: z.string().url().nullable().optional(),
-  deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+
+  deadline: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable()
+    .optional(),
+
   file_format: filmFileFormatEnum.nullable().optional(),
 })
 

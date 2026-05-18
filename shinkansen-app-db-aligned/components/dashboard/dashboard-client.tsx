@@ -113,16 +113,27 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode; label
   },
 }
 
-const filmStatusLabel: Record<string, string> = {
+// Status fixos que sempre acontecem em todo filme
+const CORE_STATUS_STEPS = [
+  "criado",
+  "cadastrado",
+  "revelando",
+  "digitalizando",
+  "edicao",
+  "concluido"
+] as const;
+
+// Mapeamento amigável para exibição
+const filmStatusDisplay: Record<string, string> = {
   criado: "Criado",
-  cadastrado: "Cadastrado",
+  cadastrado: "Recebido",
   revelando: "Revelando",
   digitalizando: "Digitalizando",
   suporte: "Suporte",
   limpeza: "Limpeza",
-  edicao: "Edicao",
-  concluido: "Concluido",
-}
+  edicao: "Edição",
+  concluido: "Concluído",
+};
 
 function formatCurrency(value: number | null | undefined) {
   return new Intl.NumberFormat("pt-BR", {
@@ -130,6 +141,7 @@ function formatCurrency(value: number | null | undefined) {
     currency: "BRL",
   }).format(Number(value ?? 0))
 }
+
 
 function formatFilmType(type: string) {
   if (type === "ja_revelado") return "Ja revelado"
@@ -203,7 +215,7 @@ export function DashboardClient({ user, orders, profile }: DashboardClientProps)
                 MEUS PEDIDOS{profile?.full_name ? `, ${profile.full_name.toUpperCase()}` : ""}
               </h1>
               <p className="text-muted-foreground font-mono text-sm">
-                Acompanhe seus filmes, prazos e o andamento do laboratorio.
+                Acompanhe seus filmes, prazos e o andamento dos serviços.
               </p>
               {profile?.photo_link && (
                 <p className="text-muted-foreground font-mono text-xs mt-2 break-all">
@@ -257,7 +269,7 @@ export function DashboardClient({ user, orders, profile }: DashboardClientProps)
         <FadeIn delay={0.2}>
           <section className="mb-12">
             <h2 className="text-xl font-mono font-bold mb-4 flex items-center gap-2">
-              <span className="text-primary">01</span> EM ANDAMENTO
+              <span className="text-primary"> EM ANDAMENTO</span>
             </h2>
             {activeOrders.length === 0 ? (
               <Card className="border-dashed">
@@ -287,7 +299,7 @@ export function DashboardClient({ user, orders, profile }: DashboardClientProps)
         <FadeIn delay={0.3}>
           <section>
             <h2 className="text-xl font-mono font-bold mb-4 flex items-center gap-2">
-              <span className="text-primary">02</span> HISTORICO DE PEDIDOS
+              <span className="text-primary"> HISTORICO DE PEDIDOS</span>
             </h2>
             {completedOrders.length === 0 ? (
               <p className="text-muted-foreground font-mono text-sm">Nenhum pedido finalizado ainda.</p>
@@ -392,32 +404,161 @@ function OrderCard({
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-3">
                     <h4 className="font-mono text-xs uppercase text-muted-foreground">Filmes</h4>
-                    {order.films.map((film) => (
-                      <div key={film.id} className="rounded border border-border p-3">
-                        <p className="font-mono text-sm font-bold">{film.name}</p>
-                        <p className="font-mono text-xs text-muted-foreground mt-1">
-                          {formatFilmType(film.film_type)}
-                          {film.push_pull ? ` • push/pull ${film.push_pull}` : ""}
-                          {film.scan_type ? ` • ${formatScanType(film.scan_type)}` : ""}
-                          {film.file_format ? ` • ${film.file_format.toUpperCase()}` : ""}
-                        </p>
-                        {film.notes && (
-                          <p className="font-mono text-xs text-muted-foreground mt-2 whitespace-pre-wrap">
-                            {film.notes}
-                          </p>
-                        )}
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <Badge variant="secondary" className="font-mono text-[10px] uppercase">
-                            {filmStatusLabel[film.status] ?? film.status}
-                          </Badge>
-                          {film.film_services.map((filmService) => (
-                            <Badge key={`${film.id}-${filmService.service_id}`} variant="outline" className="font-mono text-[10px]">
-                              {filmService.services?.name ?? "Servico"}
-                            </Badge>
-                          ))}
+                    {order.films.map((film) => {
+                      // 1. Monta os passos dinamicamente para este filme específico
+                      const stepsForThisFilm = [...CORE_STATUS_STEPS];
+
+                      const needsSuporte = film.status === "suporte" || ["limpeza", "edicao", "concluido"].includes(film.status);
+                      if (needsSuporte) {
+                        const digitalizandoIdx = stepsForThisFilm.indexOf("digitalizando");
+                        stepsForThisFilm.splice(digitalizandoIdx + 1, 0, "suporte");
+                      }
+
+                      const needsLimpeza = film.status === "limpeza" || ["edicao", "concluido"].includes(film.status);
+                      if (needsLimpeza) {
+                        const edicaoIdx = stepsForThisFilm.indexOf("edicao");
+                        stepsForThisFilm.splice(edicaoIdx, 0, "limpeza");
+                      }
+
+                      const currentStepIndex = stepsForThisFilm.indexOf(film.status as any);
+
+                      // 2. Monta as especificações e serviços na mesma linha de texto
+                      const specParts: string[] = [];
+                      
+                      // Tipo do Filme (C-41, D-76...)
+                      if (film.film_type) {
+                        specParts.push(`Filme: ${formatFilmType(film.film_type)}`);
+                      }
+                      
+                      // Push/Pull se houver
+                      if (film.push_pull) {
+                        specParts.push(`Push/Pull: ${film.push_pull}`);
+                      }
+                      
+                      
+
+                      // Coleta, organiza e categoriza os serviços vindos de film_services
+                      if (film.film_services && film.film_services.length > 0) {
+                        const digitalizacaoServicos: string[] = [];
+                        let revelacaoServico = "";
+                        let prazoServico = "";
+                        const outrosServicos: string[] = [];
+
+                        film.film_services.forEach((fs) => {
+                          const name = fs.services?.name;
+                          if (!name) return;
+
+                          const lowerName = name.toLowerCase();
+
+                          // 1. Identifica se é um serviço de prazo/entrega
+                          if (lowerName.includes("expresso") || lowerName.includes("urgente")) {
+                            prazoServico = name;
+                          } 
+                          // 2. Identifica se é o tipo de revelação/processo (ex: "Revelar", "Só Revelar")
+                          else if (lowerName === "revelar" || lowerName.includes("só revelar") || lowerName.includes("processo")) {
+                            revelacaoServico = name;
+                          }
+                          // 3. Identifica se são variantes de digitalização (Trilhas, Tradicional, etc.)
+                          else if (
+                            lowerName.includes("trilha") || 
+                            lowerName.includes("tradicional") 
+                          ) {
+                            digitalizacaoServicos.push(name);
+                          } 
+                          // 4. Qualquer outro serviço extra que o laboratório ofereça
+                          else {
+                            outrosServicos.push(name);
+                          }
+                        });
+
+                        // Injeta na linha de texto seguindo uma ordem lógica e com os prefixos corretos:
+                        
+                        // Se achou serviços de digitalização nos film_services, força o prefixo "Digitalização:"
+                        if (digitalizacaoServicos.length > 0) {
+                          specParts.push(`Digitalização: ${digitalizacaoServicos.join(" + ")}`);
+                        }
+
+                        // Formato do arquivo (JPG, TIFF, DNG...)
+                        if (film.file_format) {
+                          specParts.push(film.file_format.toUpperCase());
+                        }
+
+                        // Se achou serviço de processo/revelação
+                        if (revelacaoServico) {
+                          specParts.push(`Processo: ${revelacaoServico}`);
+                        }
+
+                        // Se achou serviço de prazo
+                        if (prazoServico) {
+                          specParts.push(`Prazo: ${prazoServico}`);
+                        }
+
+                        // Adiciona qualquer outro serviço que tenha sobrado
+                        outrosServicos.forEach(s => specParts.push(s));
+                      }
+
+                      // Junta tudo usando o ponto centralizador
+                      const formattedSpecs = specParts.join(" • ");
+
+                      return (
+                        <div key={film.id} className="rounded border border-border p-4 bg-card/30 mb-3">
+                          {/* Cabeçalho do Filme com a nova linha unificada de especificações */}
+                          <div className="mb-4">
+                            <p className="font-mono text-sm font-bold text-foreground">{film.name}</p>
+                            <p className="font-mono text-xs text-muted-foreground mt-1 tracking-tight">
+                              {formattedSpecs}
+                            </p>
+                          </div>
+
+                          {/* BARRA DE PROGRESSO VISUAL DINÂMICA */}
+                          <div className="mb-4 mt-2">
+                            <div className="relative flex justify-between items-center w-full before:content-[''] before:absolute before:left-0 before:right-0 before:top-[10px] before:h-[2px] before:bg-border before:z-0">
+                              {stepsForThisFilm.map((step, idx) => {
+                                const isCompleted = idx < currentStepIndex;
+                                const isCurrent = idx === currentStepIndex;
+
+                                let dotColor = "bg-muted border-muted-foreground/30";
+                                let textColor = "text-muted-foreground/60";
+
+                                if (isCompleted) {
+                                  dotColor = "bg-emerald-500 border-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.4)]";
+                                  textColor = "text-emerald-600 dark:text-emerald-400 font-medium";
+                                } else if (isCurrent) {
+                                  dotColor = "bg-yellow-500 border-yellow-600 animate-pulse shadow-[0_0_10px_rgba(234,179,8,0.5)]";
+                                  textColor = "text-yellow-600 dark:text-yellow-400 font-bold";
+                                }
+
+                                return (
+                                  <div key={step} className="flex flex-col items-center flex-1 relative z-10">
+                                    <div className={`w-[22px] h-[22px] rounded-full border-2 ${dotColor} transition-all duration-300 flex items-center justify-center bg-background text-[10px]`}>
+                                      {isCompleted && "✓"}
+                                    </div>
+                                    <span className={`font-mono text-[9px] uppercase tracking-tighter mt-1.5 text-center hidden md:block ${textColor}`}>
+                                      {filmStatusDisplay[step]}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            
+                            {/* Fallback Mobile */}
+                            <p className="font-mono text-[11px] font-bold text-center mt-3 block md:hidden text-yellow-500">
+                              Status atual: <span className="uppercase">{filmStatusDisplay[film.status] ?? film.status}</span>
+                            </p>
+                          </div>
+
+                          {/* INSTRUÇÕES ADICIONAIS (Só aparece se o cliente preencheu algo) */}
+                          {film.notes && film.notes.trim() !== "" && (
+                            <div className="border-t border-border/40 pt-2.5 mt-2 text-xs font-mono text-muted-foreground">
+                              <p className="whitespace-pre-wrap">
+                                <span className="text-foreground/70 uppercase text-[10px] font-bold tracking-wider mr-1">Instruções do Cliente:</span> 
+                                {film.notes}
+                              </p>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                     <div>
