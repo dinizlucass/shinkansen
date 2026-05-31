@@ -405,7 +405,7 @@ function OrderCard({
                     <h4 className="font-mono text-xs uppercase text-muted-foreground">Filmes</h4>
                     {order.films.map((film) => {
                       // 1. Monta os passos dinamicamente para este filme específico
-                      const stepsForThisFilm = [...CORE_STATUS_STEPS];
+                      const stepsForThisFilm: string[] = [...CORE_STATUS_STEPS];
 
                       const needsSuporte = film.status === "suporte" || ["limpeza", "edicao", "concluido"].includes(film.status);
                       if (needsSuporte) {

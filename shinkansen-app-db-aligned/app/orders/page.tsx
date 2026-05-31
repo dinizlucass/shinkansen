@@ -29,7 +29,7 @@ export default async function OrdersPage() {
 
   const { data: services } = await supabase
     .from("services")
-    .select("id, name, description, price, category")
+    .select("id, name, description, price, category, ui_id")
     .eq("active", true)
     .order("name")
 
