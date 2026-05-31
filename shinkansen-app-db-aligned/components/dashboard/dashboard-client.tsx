@@ -43,7 +43,6 @@ interface FilmOrder {
   film_type: string
   push_pull: string | null
   notes: string | null
-  scan_type: string | null
   file_format: string | null
   status: string
   created_at: string
