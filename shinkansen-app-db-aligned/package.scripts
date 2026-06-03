@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "slide:add":     "node scripts/manage-slides.mjs adicionar",
+    "slide:list":    "node scripts/manage-slides.mjs listar",
+    "slide:remove":  "node scripts/manage-slides.mjs remover",
+    "slide:reorder": "node scripts/manage-slides.mjs reordenar"
+  }
+}
