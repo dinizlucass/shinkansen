@@ -1,0 +1,71 @@
+SETUP — PAGAMENTO PIX EFÍ (LOJA)
+=================================
+
+1. CONVERTER O CERTIFICADO .p12 EM BASE64
+------------------------------------------
+A Efí entrega um certificado .p12. Converta para .pem e depois base64:
+
+  # Converte .p12 para .pem (sem senha)
+  openssl pkcs12 -in producao.p12 -out cert.pem -nodes
+
+  # Gera base64 numa linha só
+  # Linux/Mac:
+  base64 -w 0 cert.pem > cert.b64
+  # Windows (PowerShell):
+  [Convert]::ToBase64String([IO.File]::ReadAllBytes("cert.pem")) > cert.b64
+
+O conteúdo de cert.b64 vai na env var EFI_CERT_BASE64.
+
+
+2. VARIÁVEIS DE AMBIENTE (Vercel + .env.local)
+-----------------------------------------------
+  EFI_CLIENT_ID=Client_Id_xxx
+  EFI_CLIENT_SECRET=Client_Secret_xxx
+  EFI_CERT_BASE64=<conteúdo do cert.b64>
+  EFI_PIX_KEY=sua-chave-pix-aleatoria
+  EFI_BASE=https://pix.api.efipay.com.br
+  EFI_WEBHOOK_SKEY=uma_string_secreta_longa_e_aleatoria
+  SUPABASE_SERVICE_ROLE_KEY=<service role key do Supabase>
+
+ATENÇÃO: o webhook usa SUPABASE_SERVICE_ROLE_KEY para atualizar pedidos
+sem sessão de usuário. NUNCA exponha essa chave no frontend (não use prefixo
+NEXT_PUBLIC). Ela só é lida no servidor (route handler do webhook).
+
+
+3. REGISTRAR O WEBHOOK NA EFÍ (uma vez)
+----------------------------------------
+A Efí precisa saber para onde enviar as notificações. A URL DEVE conter a skey:
+
+  https://SEUSITE.com/api/store/payment/webhook?skey=SUA_SKEY
+
+Para registrar, rode uma vez (via script ou Postman) a função
+configurarWebhook() do lib/store/efi-pix.ts, ou use o painel/API da Efí:
+
+  PUT /v2/webhook/{chave-pix}
+  body: { "webhookUrl": "https://SEUSITE.com/api/store/payment/webhook?skey=SUA_SKEY" }
+
+A Efí faz uma validação de disponibilidade ao registrar — o endpoint já
+responde 200 ao ping (corpo sem array "pix").
+
+NOTA sobre mTLS de entrada: a Efí normalmente envia o webhook com mTLS.
+Como a Vercel não valida mTLS de entrada, a Efí tem a opção de pular essa
+exigência usando o header "skip-mtls-checking" no momento do registro do
+webhook, OU validando pela skey na URL (o que fazemos aqui). Se o registro
+falhar por mTLS, adicione o header ao registrar:
+  headers: { "x-skip-mtls-checking": "true" }
+
+
+4. FLUXO COMPLETO
+------------------
+  1. Cliente finaliza checkout → POST /api/store/create-order (pedido pendente)
+  2. Frontend chama POST /api/store/payment/create-pix → gera QR
+  3. Cliente paga o Pix
+  4. Efí chama POST /api/store/payment/webhook?skey=... → marca pago
+  5. Dashboard mostra status atualizado (e o QR enquanto pendente)
+
+
+5. EXPIRAÇÃO
+-------------
+A cobrança expira em 1h (configurável em criarCobrancaPix). Pedidos não pagos
+ficam como "pendente". Na próxima camada (carrinho abandonado) podemos cancelar
+automaticamente pedidos pendentes vencidos e devolver o estoque.
