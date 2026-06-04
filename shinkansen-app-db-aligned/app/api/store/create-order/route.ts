@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     if (!items.length) {
       return NextResponse.json({ ok: false, error: "Carrinho vazio." }, { status: 400 })
     }
-    if (!["correios", "transportadora", "retirada"].includes(deliveryType)) {
+    if (!["envio", "retirada"].includes(deliveryType)) {
       return NextResponse.json({ ok: false, error: "Tipo de entrega inválido." }, { status: 400 })
     }
     if (deliveryType !== "retirada" && !shippingAddress) {
@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
         shipping_cost:     shippingCost,
         shipping_service:  shippingOption ? `${shippingOption.empresa} ${shippingOption.nome}` : null,
         shipping_deadline: shippingOption?.prazo ?? null,
+        me_service_id:     shippingOption?.id ?? null,
         shipping_cep:      cep,
         cpf:               cpf,
         coupon_id:         couponId,

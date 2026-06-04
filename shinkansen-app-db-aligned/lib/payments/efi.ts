@@ -100,6 +100,7 @@ export function getEfiPixConfig() {
   }
 }
 
+
 function getOptionalEnv(name: string) {
   const value = process.env[name]?.trim()
   return value ? value : null
@@ -230,6 +231,28 @@ export async function getEfiPixAccessToken(forceRefresh = false) {
   }
 
   return tokenData.access_token
+}
+
+export async function cancelEfiPixCharge(txid: string): Promise<void> {
+  const token           = await getEfiPixAccessToken()
+  const { baseUrl }     = getEfiPixConfig()
+  const body            = JSON.stringify({ status: "REMOVIDA_PELO_USUARIO_RECEBEDOR" })
+
+  const { status, rawBody } = await requestWithMtls<Record<string, unknown>>({
+    method:  "PATCH" as any,   // remover o cast quando ele adicionar PATCH ao tipo
+    url:     `${baseUrl}/v2/cob/${txid}`,
+    headers: {
+      Authorization:    `Bearer ${token}`,
+      "Content-Type":   "application/json",
+      "Accept-Encoding": "identity",
+      "Content-Length": String(Buffer.byteLength(body)),
+    },
+    body,
+  })
+
+  if (status >= 300) {
+    throw new Error(`Efi cancelamento ${status}: ${rawBody}`)
+  }
 }
 
 export async function createEfiPixCharge(input: EfiPixCreateChargeInput): Promise<CreatedEfiPixCharge> {

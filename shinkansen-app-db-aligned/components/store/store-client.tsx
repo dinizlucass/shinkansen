@@ -1,36 +1,21 @@
 "use client"
 
-/**
- * components/store/store-client.tsx
- *
- * Loja "SELECT YOUR FIGHTER" — layout 3 colunas estilo KOF.
- *
- * Esquerda:  ficha do personagem (imagem, stats, descrição, preço, botão)
- * Centro:    logo animado + grade em escalões + nome em destaque no fundo
- * Direita:   time selecionado (itens maiores, qty, cupom, checkout)
- *
- * Estados das thumbs:
- *   normal     → borda neutra
- *   hover      → borda vermelha/60, fundo sutil
- *   selecionado (1º clique) → borda vermelha, fundo âmbar, triângulo canto
- *   no carrinho → borda verde, fundo verde escuro, badge qty pulsante
- *   esgotado   → grayscale, opacidade baixa, faixa diagonal "ESGOTADO"
- */
-
 import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
-import { Volume2, VolumeX, X, Plus, Minus, Loader2, Tag, Film, Check } from "lucide-react"
+import { Volume2, VolumeX, X, Loader2, Tag, Check } from "lucide-react"
 import type { User } from "@supabase/supabase-js"
 
 import type { Product, DeliveryType } from "@/lib/store/types"
 import type { OpcaoFrete } from "@/lib/store/melhor-envio"
 import { useCart } from "@/lib/store/use-cart"
 import { AnimatedTotal } from "@/components/store/animated-total"
+import { DiagonalBg } from "@/components/store/diagonal-bg"
 import AnimatedLogo from "@/components/animated-logo"
 import { GameMenuNav } from "@/components/game-menu-nav"
+import { StoreMobile } from "@/components/store/store-mobile"
 
-// ── Tipos ─────────────────────────────────────────────────────────────
+
 interface PerfilLoja { adress: string | null; cpf: string | null }
 interface StoreClientProps {
   user:               User | null
@@ -39,14 +24,52 @@ interface StoreClientProps {
   negativosPendentes: number
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// Botão de copiar com feedback visual
+function CopyButton({ text }: { text: string }) {
+  const [copiado, setCopiado] = React.useState(false)
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    } catch { /* fallback: o input já tem onFocus select */ }
+  }
+  return (
+    <button onClick={copiar} style={{
+      padding: "4px 10px", borderRadius: 3, cursor: "pointer",
+      fontFamily: "monospace", fontSize: 9, fontWeight: 700,
+      border: copiado ? "1px solid #22c55e" : "1px solid var(--border)",
+      background: copiado ? "rgba(34,197,94,0.15)" : "var(--muted)",
+      color: copiado ? "#22c55e" : "var(--foreground)",
+      transition: "all 0.2s",
+    }}>
+      {copiado ? "COPIADO ✓" : "COPIAR"}
+    </button>
+  )
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState(false)
+  React.useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener("resize", check)
+    return () => window.removeEventListener("resize", check)
+  }, [])
+  return isMobile
+}
+
 const CATEGORIA_LABEL: Record<string, string> = {
   filme_35mm: "35MM", filme_120: "120", camera: "CÂMERA",
-  acessorio: "ACESSÓRIO", outro: "OUTRO",
+  camera_recarregavel: "CÂMERA", acessorio: "ACESSÓRIO", outro: "OUTRO",
 }
+
+// Duas opções apenas
 const ENTREGA_LABEL: Record<DeliveryType, string> = {
-  correios: "Correios", transportadora: "Transportadora", retirada: "Retirada no Lab",
+  envio:    "Envio pelos Correios",
+  retirada: "Retirada no Lab",
 }
+
 function brl(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 }
@@ -54,141 +77,71 @@ function brl(v: number) {
 // ─────────────────────────────────────────────────────────────────────
 // BARRAS DE STATS — AJUSTE FINO
 // ─────────────────────────────────────────────────────────────────────
-//
-// getValue: função que retorna 0.0–1.0 (quanto a barra enche)
-//   ISO 400 → Math.min(400 / 3200, 1) = 0.125 → 12.5% de preenchimento
-//   Para encher mais com ISO 400, diminua o divisor:
-//     Math.min(p.iso / 800, 1) → ISO 400 = 50%
-//     Math.min(p.iso / 400, 1) → ISO 400 = 100%
-//
-// height da barra → linha "height: 6" dentro do motion.div da barra
-//   Aumente para 8, 10, 12 para barras mais grossas
-//
-// color → campo "color" de cada entrada abaixo
-//   ISO:      "#e5271a"  (vermelho)
-//   POSES:    "#f5c400"  (amarelo)
-//   FORMATO:  "#3b82f6"  (azul)
-//   PROCESSO: "#22c55e"  (verde)
-//
-// ─────────────────────────────────────────────────────────────────────
+// getValue: retorna 0.0–1.0 (quanto a barra enche)
+// height da barra: "height: 6" no motion.div — aumente para barras mais grossas
+// color: campo color de cada entrada
 const STAT_BARS: Array<{
   label: string
   getValue: (p: Product) => number | null
   getLabel: (p: Product) => string
   color: string
 }> = [
-  { label: "ISO",
-    // ↓ divisor: 3200 = barra quase vazia no ISO400. Use 800 para 50%, 400 para cheio
+  {
+    label: "ISO",
     getValue: p => p.iso ? Math.min(p.iso / 800, 1) : null,
     getLabel: p => p.iso ? String(p.iso) : "—",
-    color: "#e5271a" },   // ← cor da barra ISO
-  { label: "POSES",
+    color: "#e5271a",
+  },
+  {
+    label: "POSES",
     getValue: p => p.exposures ? Math.min(p.exposures / 36, 1) : null,
     getLabel: p => p.exposures ? String(p.exposures) : "—",
-    color: "#f5c400" },   // ← cor da barra POSES
-  { label: "FORMATO",
+    color: "#f5c400",
+  },
+  {
+    label: "FORMATO",
     getValue: p => p.film_format === "120" ? 0.6 : p.film_format === "35mm" ? 1 : null,
     getLabel: p => p.film_format ? p.film_format.toUpperCase() : "—",
-    color: "#3b82f6" },   // ← cor da barra FORMATO
-  { label: "DIFICULDADE",
-    // ─────────────────────────────────────────────────────────────────
-    // Sistema de dificuldade 0–5
-    //
-    // Câmera recarregável → nível fixo 1 (flash + ISO 800 + fácil de usar)
-    //
-    // Categorias válidas: filme_35mm, filme_120, camera (descartável)
-    //   Outras categorias → barra não aparece (return null)
-    //
-    // MODIFICADORES QUE AUMENTAM:
-    //   Processo P&B / D76           → +1
-    //   Processo Colorido/C41/ECN2   → +2
-    //   Formato 35mm                 → +1
-    //   Formato 120                  → +2
-    //   Câmera descartável           → +0
-    //
-    // ISO — peso logarítmico (cada stop = dobro de sensibilidade):
-    //   O peso é calculado como: 2.5 - log2(iso) * 0.5
-    //   ISO 12  → ~3.3 pontos de dificuldade (muito difícil)
-    //   ISO 50  → ~2.5
-    //   ISO 100 → ~2.0
-    //   ISO 200 → ~1.5
-    //   ISO 400 → ~1.0
-    //   ISO 800 → ~0.5
-    //   ISO 1600→ ~0.0 (não adiciona dificuldade)
-    //   ISO 3200→ ~-0.5 (reduz levemente)
-    //   Resultado clampado em 0 para não ir negativo demais
-    //
-    // POSES reduzem dificuldade:
-    //   exposures / 36, cap 0.8 — mais poses = mais tentativas = mais fácil
-    //
-    // Resultado total clampado em [0, 5]
-    // ─────────────────────────────────────────────────────────────────
+    color: "#3b82f6",
+  },
+  {
+    label: "DIFICULDADE",
     getValue: p => {
-      // Câmera recarregável → nível fixo 1
       if (p.category === "camera_recarregavel") return 1 / 5
- 
-      // Só filmes e câmeras descartáveis
       if (!["filme_35mm", "filme_120", "camera"].includes(p.category)) return null
- 
-      let pontos = 0
- 
-      // Processo
-      const proc = (p.process ?? "").toUpperCase()
-      if (proc === "P&B" || proc.includes("D76")) {
-        pontos += 1
-      } else if (proc !== "") {
-        pontos += 2  // C41, ECN2, colorido em geral
-      }
- 
-      // Formato
-      if (p.category === "filme_35mm") pontos += 1
-      else if (p.category === "filme_120") pontos += 2
-      // camera descartável → +0
- 
-      // ISO — peso logarítmico
-      // Referência: ISO 400 → contribuição neutra (~1.0 pt)
-      // log2(400) ≈ 8.64 → 2.5 - 8.64 * 0.15 ≈ 1.2 (próximo de 1)
-      if (p.iso && p.iso > 0) {
-        const isoContrib = Math.max(0, 2.5 - Math.log2(p.iso) * 0.15)
-        pontos += isoContrib
-      } else {
-        // Sem info de ISO → assume difícil
-        pontos += 2
-      }
- 
-      // Poses reduzem dificuldade
-      if (p.exposures && p.exposures > 0) {
-        pontos -= Math.min(p.exposures / 36, 0.8)
-      }
- 
-      return Math.max(0, Math.min(5, pontos)) / 5
-    },
-    getLabel: p => {
-      // Câmera recarregável → sempre nível 1
-      if (p.category === "camera_recarregavel") return "★☆☆☆☆"
-      if (!["filme_35mm", "filme_120", "camera"].includes(p.category)) return "—"
- 
       let pontos = 0
       const proc = (p.process ?? "").toUpperCase()
       if (proc === "P&B" || proc.includes("D76")) pontos += 1
       else if (proc !== "") pontos += 2
-      if (p.category === "filme_35mm") pontos += 0
-      else if (p.category === "filme_120") pontos += 1
-      if (p.iso && p.iso > 25) {
-        pontos += Math.max(0, 2.5 - Math.log2(p.iso) * 0.5)
-      } else {
-        pontos += 2
-      }
+      if (p.category === "filme_35mm") pontos += 1
+      else if (p.category === "filme_120") pontos += 2
+      if (p.iso && p.iso > 0) pontos += Math.max(0, 2.5 - Math.log2(p.iso) * 0.15)
+      else pontos += 2
+      if (p.exposures && p.exposures > 0) pontos -= Math.min(p.exposures / 36, 0.8)
+      return Math.max(0, Math.min(5, pontos)) / 5
+    },
+    getLabel: p => {
+      if (p.category === "camera_recarregavel") return "★☆☆☆☆"
+      if (!["filme_35mm", "filme_120", "camera"].includes(p.category)) return "—"
+      let pontos = 0
+      const proc = (p.process ?? "").toUpperCase()
+      if (proc === "P&B" || proc.includes("D76")) pontos += 1
+      else if (proc !== "") pontos += 2
+      if (p.category === "filme_120") pontos += 1
+      if (p.iso && p.iso > 25) pontos += Math.max(0, 2.5 - Math.log2(p.iso) * 0.5)
+      else pontos += 2
       if (p.exposures && p.exposures > 0) pontos -= Math.min(p.exposures / 36, 1)
- 
       const nivel = Math.max(1, Math.min(5, Math.round(Math.max(0, Math.min(5, pontos)))))
       return ["★☆☆☆☆","★★☆☆☆","★★★☆☆","★★★★☆","★★★★★"][nivel - 1]
     },
-    color: "#8b5cf6" },  // ← cor da barra DIFICULDADE
-  { label: "PROCESSO",
+    color: "#8b5cf6",
+  },
+  {
+    label: "PROCESSO",
     getValue: p => p.process ? (p.process === "C41" ? 0.7 : p.process === "P&B" ? 0.9 : 0.5) : null,
     getLabel: p => p.process ?? "—",
-    color: "#22c55e" },   // ← cor da barra PROCESSO
+    color: "#22c55e",
+  },
 ]
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -196,18 +149,30 @@ const STAT_BARS: Array<{
 // ═══════════════════════════════════════════════════════════════════════
 
 export function StoreClient({ user, products, perfil, negativosPendentes }: StoreClientProps) {
+  const isMobile = useIsMobile()
+
+  if (isMobile) {
+    return <StoreMobile user={user} products={products} perfil={perfil} negativosPendentes={negativosPendentes} />
+  }
+
+  return <StoreDesktop user={user} products={products} perfil={perfil} negativosPendentes={negativosPendentes} />
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// LAYOUT DESKTOP — componente separado para não violar regra dos hooks
+// ═══════════════════════════════════════════════════════════════════════
+
+function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClientProps) {
   const cart = useCart()
+  const [selecionado, setSelecionado] = React.useState<Product | null>(products[0] ?? null)
+  const [selecionadoId, setSelId]     = React.useState<string | null>(null)
+  const [muted, setMuted]             = React.useState(true)
+  const [checkoutAberto, setCheckout] = React.useState(false)
+  const [flashId, setFlashId]         = React.useState<string | null>(null)
+  const [logoFrame, setLogoFrame]     = React.useState(0)
 
-  const [selecionado, setSelecionado]   = React.useState<Product | null>(products[0] ?? null)
-  const [selecionadoId, setSelId]       = React.useState<string | null>(null)
-  const [muted, setMuted]               = React.useState(true)
-  const [checkoutAberto, setCheckout]   = React.useState(false)
-  const [flashId, setFlashId]           = React.useState<string | null>(null)
-  const [logoFrame, setLogoFrame]       = React.useState(0)
-
-  // Logo animado — cicla a cada 2.4s
   React.useEffect(() => {
-    const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 2400)
+    const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 8000)
     return () => clearInterval(id)
   }, [])
 
@@ -222,20 +187,17 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
   function clicarThumb(p: Product) {
     if (p.stock_quantity <= 0) return
     if (selecionadoId === p.id) {
-      // 2º clique — adiciona ao carrinho
       if (!cart.podeAdicionar(p)) return
       cart.adicionar(p, 1)
       setFlashId(p.id)
       setTimeout(() => setFlashId(null), 350)
       setSelId(null)
     } else {
-      // 1º clique — seleciona
       setSelecionado(p)
       setSelId(p.id)
     }
   }
 
-  // Grade em escalões: distribui produtos em linhas com offsets
   const THUMBS_PER_ROW = 4
   const rows: Product[][] = []
   for (let i = 0; i < products.length; i += THUMBS_PER_ROW) {
@@ -246,7 +208,7 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
     <div className="min-h-screen bg-background flex flex-col" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
       <audio ref={audioRef} loop src="/store-bgm.mp3" />
 
-      {/* ── HEADER ── */}
+      {/* HEADER */}
       <header style={{
         background: "var(--card)", borderBottom: "1px solid var(--border)",
         padding: "0 24px", height: 52, display: "flex", alignItems: "center",
@@ -254,55 +216,41 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
       }}>
         <Link href="/"><AnimatedLogo className="w-10 h-auto" /></Link>
         <div style={{ flex: 1, textAlign: "center" }}>
-          <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 11, color: "var(--muted-foreground)", letterSpacing: "0.3em" }}>
-            MONTE SEU TIME
-          </div>
-          <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 15, color: "#e5271a", letterSpacing: "0.15em", marginTop: 2 }}>
-            SELECT YOUR FILMS
-          </div>
+          <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 11, color: "var(--muted-foreground)", letterSpacing: "0.3em" }}>MONTE SEU TIME</div>
+          <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 15, color: "#e5271a", letterSpacing: "0.15em", marginTop: 2 }}>SELECT YOUR FILMS</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <GameMenuNav user={user} variant="horizontal" />
           <GlitchSKS />
-          <button onClick={() => setMuted(m => !m)}
-            style={{ width: 34, height: 34, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted-foreground)" }}>
+          <button onClick={() => setMuted(m => !m)} style={{ width: 34, height: 34, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted-foreground)" }}>
             {muted ? <VolumeX size={15} /> : <Volume2 size={15} color="#e5271a" />}
           </button>
         </div>
       </header>
 
-      {/* ── CORPO 3 COLUNAS ── */}
+      {/* CORPO 3 COLUNAS */}
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "360px 1fr 260px", overflow: "hidden", minHeight: 0 }}>
 
-        {/* ══ COL ESQUERDA: FICHA ══ */}
+        {/* COL ESQUERDA: FICHA */}
         <aside style={{ borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--card)" }}>
           <AnimatePresence mode="wait">
             {selecionado && (
               <motion.div key={selecionado.id}
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -8 }}
-                transition={{ duration: 0.22 }}
+                initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.22 }}
                 style={{ display: "flex", flexDirection: "column", height: "100%", padding: 12, gap: 10, overflow: "hidden" }}
               >
-                {/* Imagem + toggle */}
                 <div style={{ position: "relative", aspectRatio: "4/3", borderRadius: 4, overflow: "hidden", background: "#0d0d0d", flexShrink: 0 }}>
                   <FichaImagem product={selecionado} />
                 </div>
-
-                {/* Marca + nome */}
                 <div style={{ flexShrink: 0 }}>
                   {selecionado.brand && (
                     <div style={{ fontSize: 15, letterSpacing: "0.15em", color: "#e5271a", textTransform: "uppercase" }}>{selecionado.brand}</div>
                   )}
-                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", marginTop: 2 }}>
-                    {selecionado.name}
-                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", marginTop: 2 }}>{selecionado.name}</div>
                   <div style={{ fontSize: 9, color: "var(--muted-foreground)", marginTop: 2 }}>
                     {CATEGORIA_LABEL[selecionado.category] ?? selecionado.category}
-                    {selecionado.stock_quantity > 0
-                      ? ` · ${selecionado.stock_quantity} em estoque`
-                      : " · ESGOTADO"}
+                    {selecionado.stock_quantity > 0 ? ` · ${selecionado.stock_quantity} em estoque` : " · ESGOTADO"}
                   </div>
                 </div>
 
@@ -311,38 +259,43 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
                   {STAT_BARS.map(({ label, getValue, getLabel, color }) => {
                     const val = getValue(selecionado)
                     if (val === null) return null
+                    const isDificuldade = label === "DIFICULDADE"
                     return (
-                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 15, color: "var(--muted-foreground)", width: 92, flexShrink: 0 }}>{label}</span>
-                        <div style={{ flex: 1, height: 6, /* ← grossura da barra em px */ background: "var(--muted)", borderRadius: 2, overflow: "hidden" }}>
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${val * 100}%` }}
-                            transition={{ duration: 0.5, ease: "easeOut" }}
-                            style={{ height: "100%", background: color, borderRadius: 2, opacity: 0.85 }}
-                          />
+                      <div key={label} style={{ display: "flex", flexDirection: "column", gap: isDificuldade ? 4 : 0 }}>
+                        {isDificuldade && (
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontSize: 15, color, letterSpacing: "0.1em", fontWeight: 700 }}>{label}</span>
+                            <span style={{ fontSize: 13, color: "var(--muted-foreground)" }}>{getLabel(selecionado)}</span>
+                          </div>
+                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {!isDificuldade && (
+                            <span style={{ fontSize: 15, color: "var(--muted-foreground)", width: 92, flexShrink: 0 }}>{label}</span>
+                          )}
+                          <div style={{ flex: 1, height: 6, background: "var(--muted)", borderRadius: 2, overflow: "hidden" }}>
+                            <motion.div
+                              initial={{ width: 0 }} animate={{ width: `${val * 100}%` }}
+                              transition={{ duration: 0.5, ease: "easeOut" }}
+                              style={{ height: "100%", background: color, borderRadius: 2, opacity: 0.85 }}
+                            />
+                          </div>
+                          {!isDificuldade && (
+                            <span style={{ fontSize: 15, color: "var(--muted-foreground)", width: 38, textAlign: "right", flexShrink: 0 }}>{getLabel(selecionado)}</span>
+                          )}
                         </div>
-                        <span style={{ fontSize: 15, color: "var(--muted-foreground)", width: 38, textAlign: "right", flexShrink: 0 }}>{getLabel(selecionado)}</span>
                       </div>
                     )
                   })}
                 </div>
 
-                {/* Separador */}
                 <div style={{ height: 1, background: "var(--border)", flexShrink: 0 }} />
-
-                {/* Descrição */}
                 {selecionado.description && (
                   <div style={{ fontSize: 15, color: "var(--muted-foreground)", lineHeight: 1.7, flex: 1, overflow: "hidden" }}>
                     {selecionado.description}
                   </div>
                 )}
-
-                {/* Preço + botão */}
                 <div style={{ flexShrink: 0, marginTop: "auto" }}>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "#e5271a", marginBottom: 6 }}>
-                    {brl(selecionado.price)}
-                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "#e5271a", marginBottom: 6 }}>{brl(selecionado.price)}</div>
                   <button
                     onClick={() => {
                       if (!cart.podeAdicionar(selecionado)) return
@@ -351,11 +304,7 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
                       setTimeout(() => setFlashId(null), 350)
                     }}
                     disabled={selecionado.stock_quantity <= 0 || !cart.podeAdicionar(selecionado)}
-                    style={{
-                      width: "100%", padding: "10px 0", background: "#e5271a", color: "#fff",
-                      border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "'Press Start 2P', monospace",
-                      fontSize: 9, letterSpacing: "0.1em", opacity: selecionado.stock_quantity <= 0 ? 0.3 : 1,
-                    }}
+                    style={{ width: "100%", padding: "10px 0", background: "#e5271a", color: "#fff", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "'Press Start 2P', monospace", fontSize: 9, letterSpacing: "0.1em", opacity: selecionado.stock_quantity <= 0 ? 0.3 : 1 }}
                   >
                     + ADICIONAR O FILME
                   </button>
@@ -370,43 +319,50 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
           </AnimatePresence>
         </aside>
 
-        {/* ══ COL CENTRAL: GRADE ══ */}
-        <main style={{ display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
-          {/* Nome grande no fundo */}
-          {selecionado && (
-            <div style={{
-              position: "absolute", bottom: 60, left: 0, right: 0,
-              textAlign: "center", pointerEvents: "none", userSelect: "none", zIndex: 0,
-            }}>
-              {/* Sombra VHS tripla — camada 1: vermelho deslocado */}
-              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 72, fontWeight: 700, color: "#e5271a", opacity: 0.04, letterSpacing: 14, whiteSpace: "nowrap", transform: "translateX(6px) translateY(3px)" }}>
+        {/* COL CENTRAL: GRADE */}
+        <main style={{ display: "flex", flexDirection: "column", overflow: "hidden", position: "relative"}}>
+          <DiagonalBg />
+         {selecionado && (
+            <div className="absolute bottom-[60px] left-0 right-0 z-0 grid pointer-events-none select-none place-items-center w-full px-4">
+              
+              {/* Camada 1: Sombra de fundo (Back) */}
+              <div 
+                className="col-start-1 row-start-1 font-bold text-center text-[#e5271a] opacity-40 whitespace-nowrap translate-x-[4px] translate-y-[20px] text-[3.5vw]"
+                style={{ fontFamily: "'Press Start 2P', monospace", letterSpacing: "0.2em" }}
+              >
                 {selecionado.name.toUpperCase()}
               </div>
-              {/* Camada 2: ciano deslocado */}
-              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 72, fontWeight: 700, color: "#7fced5", opacity: 0.05, letterSpacing: 14, whiteSpace: "nowrap", transform: "translateX(-4px)", marginTop: -80 }}>
+
+              {/* Camada 2: Cor principal (Middle) */}
+              <div 
+                className="col-start-1 row-start-1 font-bold text-center text-[#0e3547] opacity-50 whitespace-nowrap translate-y-[10px] text-[3.5vw] "
+                style={{ fontFamily: "'Press Start 2P', monospace", letterSpacing: "0.25em" }}
+              >
                 {selecionado.name.toUpperCase()}
               </div>
-              {/* Camada 3: branco — principal */}
-              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 72, fontWeight: 700, color: "#e5271a", opacity: 0.18, letterSpacing: 14, whiteSpace: "nowrap", marginTop: -80 }}>
+
+              {/* Camada 3: Centro/Preenchimento escuro (Front) */}
+              <div 
+                className="col-start-1 row-start-1 font-bold text-center text-[#2c1111] opacity-70 whitespace-nowrap translate-y-[25px] text-[4vw]"
+                style={{ fontFamily: "'Press Start 2P', monospace", letterSpacing: "0.18em" }}
+              >
+                {selecionado.name.toUpperCase()}
+              </div>
+              <div 
+                className="col-start-1 row-start-1 font-bold text-center text-[#e5271a] whitespace-nowrap translate-y-[0px] text-[4vw]"
+                style={{ fontFamily: "'Michroma', monospace", letterSpacing: "0.18em" }}
+              >
                 {selecionado.name.toUpperCase()}
               </div>
             </div>
           )}
-
-          {/* Logo animado */}
           <div style={{ padding: "20px 0 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0, zIndex: 1 }}>
-            <motion.div
-              key={logoFrame}
-              initial={{ scale: 0.92, opacity: 0.6 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.3 }}
-            >
+            <motion.div key={logoFrame} initial={{ scale: 0.92, opacity: 0.6 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }}>
               <AnimatedLogo className="w-48 h-auto" />
-              </motion.div>
-            <InfinityTimer />
+            </motion.div>
+            
           </div>
 
-          {/* Grade em escalões */}
           <div style={{ flex: 1, overflowY: "auto", padding: "8px 24px 24px", zIndex: 1 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
               {rows.map((row, rowIdx) => {
@@ -418,104 +374,45 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
                       const isSelecionado = selecionadoId === p.id
                       const semEstoque    = p.stock_quantity <= 0
                       const isFlash       = flashId === p.id
-
                       let borderColor = "var(--border)"
                       let bgColor     = "var(--card)"
-                      if (isSelecionado) { borderColor = "#e5271a"; bgColor = "#1a0a00" }
-                      else if (noCarrinho) { borderColor = "#22c55e"; bgColor = "#0a1a0a" }
-
+                      if (isSelecionado)  { borderColor = "#e5271a"; bgColor = "#1a0a00" }
+                      else if (noCarrinho){ borderColor = "#22c55e"; bgColor = "#0a1a0a" }
                       return (
-                        <motion.div
-                          key={p.id}
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
+                        <motion.div key={p.id}
+                          initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: (rowIdx * THUMBS_PER_ROW + i) * 0.04 }}
                           onClick={() => clicarThumb(p)}
-                          style={{
-                            width: 160, height: 160, flexShrink: 0,
-                            border: `2px solid ${borderColor}`,
-                            borderRadius: 4,
-                            background: bgColor,
-                            position: "relative",
-                            cursor: semEstoque ? "not-allowed" : "pointer",
-                            overflow: "hidden",
-                            filter: semEstoque ? "grayscale(1)" : "none",
-                            opacity: semEstoque ? 0.45 : 1,
-                            transition: "border-color 0.15s, background 0.15s",
-                          }}
+                          style={{ width: 160, height: 160, flexShrink: 0, border: `2px solid ${borderColor}`, borderRadius: 4, background: bgColor, position: "relative", cursor: semEstoque ? "not-allowed" : "pointer", overflow: "hidden", filter: semEstoque ? "grayscale(1)" : "none", opacity: semEstoque ? 0.45 : 1, transition: "border-color 0.15s, background 0.15s" }}
                         >
-                          {/* Thumb */}
-                          <img src={p.images.thumb} alt={p.name} draggable={false}
-                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-
-                          {/* Flash de adição */}
+                          <img src={p.images.thumb} alt={p.name} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                           <AnimatePresence>
                             {isFlash && (
                               <motion.div initial={{ opacity: 0.8 }} animate={{ opacity: 0 }} transition={{ duration: 0.35 }}
                                 style={{ position: "absolute", inset: 0, background: "#e5271a", pointerEvents: "none" }} />
                             )}
                           </AnimatePresence>
-
-                          {/* Triângulo canto — selecionado */}
                           {isSelecionado && (
-                            <div style={{
-                              position: "absolute", top: 0, right: 0,
-                              width: 0, height: 0,
-                              borderTop: "14px solid #e5271a",
-                              borderLeft: "14px solid transparent",
-                            }} />
+                            <div style={{ position: "absolute", top: 0, right: 0, width: 0, height: 0, borderTop: "14px solid #e5271a", borderLeft: "14px solid transparent" }} />
                           )}
-
-                          {/* Badge qty — no carrinho */}
                           {noCarrinho && (
-                            <motion.div
-                              animate={{ scale: [1, 1.15, 1] }}
-                              transition={{ duration: 1.8, repeat: Infinity }}
-                              style={{
-                                position: "absolute", top: -6, right: -6,
-                                width: 18, height: 18, borderRadius: 9,
-                                background: "#e5271a", color: "#fff",
-                                fontFamily: "monospace", fontSize: 10, fontWeight: 700,
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                              }}
-                            >
+                            <motion.div animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 1.8, repeat: Infinity }}
+                              style={{ position: "absolute", top: -6, right: -6, width: 18, height: 18, borderRadius: 9, background: "#e5271a", color: "#fff", fontFamily: "monospace", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
                               {noCarrinho.quantity}
                             </motion.div>
                           )}
-
-                          {/* Glow pulsante no carrinho */}
                           {noCarrinho && (
-                            <motion.div
-                              animate={{ opacity: [0, 0.35, 0] }}
-                              transition={{ duration: 2, repeat: Infinity }}
-                              style={{ position: "absolute", inset: 0, border: "2px solid #22c55e", borderRadius: 4, pointerEvents: "none" }}
-                            />
+                            <motion.div animate={{ opacity: [0, 0.35, 0] }} transition={{ duration: 2, repeat: Infinity }}
+                              style={{ position: "absolute", inset: 0, border: "2px solid #22c55e", borderRadius: 4, pointerEvents: "none" }} />
                           )}
-
-                          {/* Faixa esgotado */}
                           {semEstoque && (
                             <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-                              <div style={{
-                                position: "absolute", left: "50%", top: "50%",
-                                width: "160%", background: "#e5271a", padding: "3px 0",
-                                transform: "translate(-50%,-50%) rotate(-32deg)",
-                                textAlign: "center",
-                              }}>
-                                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 6, color: "#fff", letterSpacing: 1 }}>
-                                  ESGOTADO
-                                </span>
+                              <div style={{ position: "absolute", left: "50%", top: "50%", width: "160%", background: "#e5271a", padding: "3px 0", transform: "translate(-50%,-50%) rotate(-32deg)", textAlign: "center" }}>
+                                <span style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 6, color: "#fff", letterSpacing: 1 }}>ESGOTADO</span>
                               </div>
                             </div>
                           )}
-
-                          {/* Nome abreviado */}
-                          <div style={{
-                            position: "absolute", bottom: 0, insetInline: 0,
-                            background: "rgba(0,0,0,0.6)", padding: "2px 4px",
-                            fontFamily: "monospace", fontSize: 8,
-                            color: isSelecionado ? "#e5271a" : noCarrinho ? "#22c55e" : "var(--muted-foreground)",
-                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                          }}>
+                          <div style={{ position: "absolute", bottom: 0, insetInline: 0, background: "rgba(0,0,0,0.6)", padding: "2px 4px", fontFamily: "monospace", fontSize: 8, color: isSelecionado ? "#e5271a" : noCarrinho ? "#22c55e" : "var(--muted-foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {p.name.split(" ").slice(0, 2).join(" ")}
                           </div>
                         </motion.div>
@@ -525,166 +422,104 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
                 )
               })}
             </div>
-
-            {/* Dica */}
-            <div style={{ textAlign: "center", marginTop: 20, fontFamily: "monospace", fontSize: 8, color: "var(--border)", letterSpacing: 3 }}>
+            <div style={{ textAlign: "center", marginTop: 20, fontFamily: "monospace", fontSize:12, color: "white", letterSpacing: 3 }}>
               1° CLIQUE SELECIONA · 2° ADICIONA
             </div>
           </div>
         </main>
 
-        {/* ══ COL DIREITA: TIME ══ */}
+        {/* COL DIREITA: CARRINHO */}
         <aside style={{ borderLeft: "1px solid var(--border)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--card)" }}>
           <div style={{ padding: "12px 12px 6px", flexShrink: 0 }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, color: "var(--muted-foreground)", letterSpacing: 3, textTransform: "uppercase" }}>
-              Time selecionado
-            </div>
+            <div style={{ fontFamily: "monospace", fontSize: 9, color: "var(--muted-foreground)", letterSpacing: 3, textTransform: "uppercase" }}>Time selecionado</div>
           </div>
           <div style={{ height: 1, background: "var(--border)", flexShrink: 0 }} />
-
-          {/* Lista de itens */}
           <div style={{ flex: 1, overflowY: "auto", padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
             <AnimatePresence mode="popLayout">
               {cart.items.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                   style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
                   {[...Array(4)].map((_, i) => (
-                    <div key={i} style={{
-                      height: 56, borderRadius: 4, border: "1px dashed var(--border)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontFamily: "monospace", fontSize: 8, color: "var(--border)",
-                    }}>
+                    <div key={i} style={{ height: 56, borderRadius: 4, border: "1px dashed var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "monospace", fontSize: 8, color: "var(--border)" }}>
                       SLOT VAZIO
                     </div>
                   ))}
                 </motion.div>
               )}
               {cart.items.map(item => (
-                <motion.div key={item.product.id}
-                  layout
-                  initial={{ opacity: 0, y: 16, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                <motion.div key={item.product.id} layout
+                  initial={{ opacity: 0, y: 16, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9, x: 20 }}
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  style={{
-                    display: "flex", gap: 8, padding: 8, borderRadius: 4,
-                    border: "1px solid var(--border)", background: "var(--background)",
-                    alignItems: "flex-start",
-                  }}
+                  style={{ display: "flex", gap: 8, padding: 8, borderRadius: 4, border: "1px solid var(--border)", background: "var(--background)", alignItems: "flex-start" }}
                 >
-                  {/* Thumb */}
                   <div style={{ width: 44, height: 44, borderRadius: 3, overflow: "hidden", flexShrink: 0, background: "#0d0d0d" }}>
-                    <img src={item.product.images.thumb} alt={item.product.name} draggable={false}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    <img src={item.product.images.thumb} alt={item.product.name} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   </div>
-
-                  {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: "var(--foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {item.product.name}
-                    </div>
+                    <div style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: "var(--foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.product.name}</div>
                     <div style={{ fontFamily: "monospace", fontSize: 8, color: "var(--muted-foreground)", marginTop: 1 }}>
                       {CATEGORIA_LABEL[item.product.category]}
                       {item.product.iso ? ` · ISO${item.product.iso}` : ""}
                       {item.product.film_format ? ` · ${item.product.film_format}` : ""}
                     </div>
                     <div style={{ fontFamily: "monospace", fontSize: 10, color: "#e5271a", marginTop: 2 }}>
-                      {brl(item.product.price)}
-                      {item.quantity > 1 && ` × ${item.quantity}`}
+                      {brl(item.product.price)}{item.quantity > 1 && ` × ${item.quantity}`}
                     </div>
                   </div>
-
-                  {/* Controles */}
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-                    <button onClick={() => cart.remover(item.product.id)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1, padding: 0 }}>
-                      ✕
-                    </button>
+                    <button onClick={() => cart.remover(item.product.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted-foreground)", fontSize: 12, lineHeight: 1, padding: 0 }}>✕</button>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <button onClick={() => cart.alterarQuantidade(item.product.id, item.quantity - 1)}
-                        style={{ width: 18, height: 18, border: "1px solid var(--border)", borderRadius: 2, background: "transparent", cursor: "pointer", color: "var(--muted-foreground)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        −
-                      </button>
+                      <button onClick={() => cart.alterarQuantidade(item.product.id, item.quantity - 1)} style={{ width: 18, height: 18, border: "1px solid var(--border)", borderRadius: 2, background: "transparent", cursor: "pointer", color: "var(--muted-foreground)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
                       <span style={{ fontFamily: "monospace", fontSize: 10, minWidth: 14, textAlign: "center" }}>{item.quantity}</span>
-                      <button onClick={() => cart.alterarQuantidade(item.product.id, item.quantity + 1)}
-                        disabled={item.quantity >= item.product.stock_quantity}
-                        style={{ width: 18, height: 18, border: "1px solid var(--border)", borderRadius: 2, background: "transparent", cursor: "pointer", color: "var(--muted-foreground)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", opacity: item.quantity >= item.product.stock_quantity ? 0.3 : 1 }}>
-                        +
-                      </button>
+                      <button onClick={() => cart.alterarQuantidade(item.product.id, item.quantity + 1)} disabled={item.quantity >= item.product.stock_quantity} style={{ width: 18, height: 18, border: "1px solid var(--border)", borderRadius: 2, background: "transparent", cursor: "pointer", color: "var(--muted-foreground)", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", opacity: item.quantity >= item.product.stock_quantity ? 0.3 : 1 }}>+</button>
                     </div>
                   </div>
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
-
-          {/* Totais + cupom + checkout */}
           <div style={{ borderTop: "1px solid var(--border)", padding: 12, display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "monospace", fontSize: 9, color: "var(--muted-foreground)" }}>
               <span>SUBTOTAL</span>
               <span><AnimatedTotal value={cart.subtotal} /></span>
             </div>
-
-            {/* Campo cupom */}
             <CupomField subtotal={cart.subtotal} />
-
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: "monospace" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "var(--foreground)" }}>TOTAL</span>
               <span style={{ fontSize: 15, fontWeight: 700, color: "#e5271a" }}><AnimatedTotal value={cart.subtotal} /></span>
             </div>
-
-            <button
-              onClick={() => setCheckout(true)}
-              disabled={cart.items.length === 0}
-              style={{
-                padding: "11px 0", background: "#e5271a", color: "#fff", border: "none",
-                borderRadius: 6, cursor: "pointer", fontFamily: "'Press Start 2P', monospace",
-                fontSize: 10, letterSpacing: "0.1em", opacity: cart.items.length === 0 ? 0.3 : 1,
-                transition: "opacity 0.2s",
-              }}
-            >
+            <button onClick={() => setCheckout(true)} disabled={cart.items.length === 0}
+              style={{ padding: "11px 0", background: "#e5271a", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "'Press Start 2P', monospace", fontSize: 10, letterSpacing: "0.1em", opacity: cart.items.length === 0 ? 0.3 : 1, transition: "opacity 0.2s" }}>
               CHECKOUT
             </button>
           </div>
         </aside>
       </div>
 
-      {/* ── CHECKOUT MODAL ── */}
       <AnimatePresence>
         {checkoutAberto && (
-          <CheckoutModal
-            cart={cart}
-            user={user}
-            perfil={perfil}
-            negativosPendentes={negativosPendentes}
-            onClose={() => setCheckout(false)}
-            onSuccess={() => { cart.limpar(); setCheckout(false) }}
-          />
+          <CheckoutModal cart={cart} user={user} perfil={perfil} negativosPendentes={negativosPendentes}
+            onClose={() => setCheckout(false)} onSuccess={() => { cart.limpar(); setCheckout(false) }} />
         )}
       </AnimatePresence>
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// FICHA IMAGEM (toggle embalagem / exemplo)
-// ═══════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────
+// SUBCOMPONENTES
+// ─────────────────────────────────────────────────────────────────────
 
 function FichaImagem({ product }: { product: Product }) {
   const [aba, setAba] = React.useState<"package" | "sample">("package")
   return (
     <>
-      <img src={aba === "package" ? product.images.package : product.images.sample}
-        alt={product.name} draggable={false}
+      <img src={aba === "package" ? product.images.package : product.images.sample} alt={product.name} draggable={false}
         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       <div style={{ position: "absolute", bottom: 6, left: 6, display: "flex", gap: 4 }}>
         {(["package", "sample"] as const).map(v => (
-          <button key={v} onClick={() => setAba(v)} style={{
-            fontFamily: "monospace", fontSize: 7, padding: "2px 6px", borderRadius: 2,
-            background: aba === v ? "#e5271a" : "rgba(0,0,0,0.7)",
-            color: aba === v ? "#fff" : "#888", border: "none", cursor: "pointer",
-            textTransform: "uppercase",
-          }}>
+          <button key={v} onClick={() => setAba(v)} style={{ fontFamily: "monospace", fontSize: 7, padding: "2px 6px", borderRadius: 2, background: aba === v ? "#e5271a" : "rgba(0,0,0,0.7)", color: aba === v ? "#fff" : "#888", border: "none", cursor: "pointer", textTransform: "uppercase" }}>
             {v === "package" ? "EMBAL." : "EXEMPLO"}
           </button>
         ))}
@@ -693,55 +528,25 @@ function FichaImagem({ product }: { product: Product }) {
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// INFINITY TIMER — símbolo ∞ com movimento contínuo estilo timer de jogo
-// ═══════════════════════════════════════════════════════════════════════
-
 function InfinityTimer() {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 24 }}>
       <svg width="48" height="24" viewBox="0 0 48 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="inf-grad" x1="0" y1="0" x2="48" y2="0" gradientUnits="userSpaceOnUse">
-            <stop offset="0%"   stopColor="#e5271a" stopOpacity="0.2" />
-            <stop offset="40%"  stopColor="#e5271a" stopOpacity="1"   />
-            <stop offset="60%"  stopColor="#e5271a" stopOpacity="1"   />
+            <stop offset="0%" stopColor="#e5271a" stopOpacity="0.2" />
+            <stop offset="40%" stopColor="#e5271a" stopOpacity="1" />
+            <stop offset="60%" stopColor="#e5271a" stopOpacity="1" />
             <stop offset="100%" stopColor="#e5271a" stopOpacity="0.2" />
           </linearGradient>
         </defs>
-        {/* Símbolo ∞ como path */}
-        <path
-          d="M 12 12 C 12 6, 4 6, 4 12 C 4 18, 12 18, 24 12 C 36 6, 44 6, 44 12 C 44 18, 36 18, 24 12 C 12 6, 12 6, 12 12 Z"
-          stroke="url(#inf-grad)"
-          strokeWidth="2.5"
-          fill="none"
-          strokeLinecap="round"
-        />
-        {/* Ponto corredor que percorre o ∞ continuamente */}
-        <circle r="3" fill="#e5271a">
-          <animateMotion
-            dur="2.4s"
-            repeatCount="indefinite"
-            path="M 12 12 C 12 6, 4 6, 4 12 C 4 18, 12 18, 24 12 C 36 6, 44 6, 44 12 C 44 18, 36 18, 24 12 C 12 6, 12 6, 12 12 Z"
-          />
-        </circle>
-        {/* Rastro do ponto (sombra) */}
-        <circle r="1.5" fill="#e5271a" opacity="0.4">
-          <animateMotion
-            dur="2.4s"
-            begin="0.12s"
-            repeatCount="indefinite"
-            path="M 12 12 C 12 6, 4 6, 4 12 C 4 18, 12 18, 24 12 C 36 6, 44 6, 44 12 C 44 18, 36 18, 24 12 C 12 6, 12 6, 12 12 Z"
-          />
-        </circle>
+        <path d="M 12 12 C 12 6, 4 6, 4 12 C 4 18, 12 18, 24 12 C 36 6, 44 6, 44 12 C 44 18, 36 18, 24 12 C 12 6, 12 6, 12 12 Z" stroke="url(#inf-grad)" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+        <circle r="3" fill="#e5271a"><animateMotion dur="2.4s" repeatCount="indefinite" path="M 12 12 C 12 6, 4 6, 4 12 C 4 18, 12 18, 24 12 C 36 6, 44 6, 44 12 C 44 18, 36 18, 24 12 C 12 6, 12 6, 12 12 Z" /></circle>
+        <circle r="1.5" fill="#e5271a" opacity="0.4"><animateMotion dur="2.4s" begin="0.12s" repeatCount="indefinite" path="M 12 12 C 12 6, 4 6, 4 12 C 4 18, 12 18, 24 12 C 36 6, 44 6, 44 12 C 44 18, 36 18, 24 12 C 12 6, 12 6, 12 12 Z" /></circle>
       </svg>
     </div>
   )
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// GLITCH SKS
-// ═══════════════════════════════════════════════════════════════════════
 
 function GlitchSKS() {
   return (
@@ -749,36 +554,25 @@ function GlitchSKS() {
       <span style={{ position: "relative", zIndex: 1, color: "#e5271a" }}>SKS</span>
       <motion.span aria-hidden style={{ position: "absolute", inset: 0, color: "#7fced5" }}
         animate={{ x: [0,-2,2,-1,0,0,0], opacity: [0,0.8,0.6,0.9,0,0,0] }}
-        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", times:[0,0.05,0.1,0.15,0.2,0.6,1] }}>
-        SKS
-      </motion.span>
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", times:[0,0.05,0.1,0.15,0.2,0.6,1] }}>SKS</motion.span>
       <motion.span aria-hidden style={{ position: "absolute", inset: 0, color: "#ff0601" }}
         animate={{ x: [0,2,-2,1,0,0,0], opacity: [0,0.7,0.5,0.8,0,0,0] }}
-        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", times:[0,0.05,0.1,0.15,0.2,0.6,1] }}>
-        SKS
-      </motion.span>
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut", times:[0,0.05,0.1,0.15,0.2,0.6,1] }}>SKS</motion.span>
     </div>
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// CAMPO DE CUPOM
-// ═══════════════════════════════════════════════════════════════════════
-
 function CupomField({ subtotal }: { subtotal: number }) {
-  const [code, setCode]       = React.useState("")
+  const [code, setCode]         = React.useState("")
   const [aplicado, setAplicado] = React.useState<{ code: string; discount: number } | null>(null)
-  const [erro, setErro]       = React.useState("")
-  const [loading, setLoading] = React.useState(false)
+  const [erro, setErro]         = React.useState("")
+  const [loading, setLoading]   = React.useState(false)
 
   async function aplicar() {
     if (!code.trim()) return
     setLoading(true); setErro("")
     try {
-      const res  = await fetch("/api/store/validate-coupon", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ code: code.trim(), subtotal }),
-      })
+      const res  = await fetch("/api/store/validate-coupon", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ code: code.trim(), subtotal }) })
       const data = await res.json()
       if (!data.ok) { setErro(data.error ?? "Cupom inválido"); return }
       setAplicado({ code: data.coupon.code, discount: data.coupon.discount })
@@ -798,11 +592,9 @@ function CupomField({ subtotal }: { subtotal: number }) {
   return (
     <div>
       <div style={{ display:"flex", gap:4 }}>
-        <input value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-          placeholder="CUPOM" onKeyDown={e => e.key === "Enter" && aplicar()}
+        <input value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="CUPOM" onKeyDown={e => e.key === "Enter" && aplicar()}
           style={{ flex:1, background:"var(--background)", border:"1px solid var(--border)", borderRadius:3, padding:"4px 8px", fontFamily:"monospace", fontSize:9, color:"var(--foreground)", outline:"none", textTransform:"uppercase" }} />
-        <button onClick={aplicar} disabled={loading || !code.trim()}
-          style={{ padding:"4px 10px", background:"var(--muted)", border:"1px solid var(--border)", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:8, color:"var(--foreground)", opacity: loading || !code.trim() ? 0.4 : 1 }}>
+        <button onClick={aplicar} disabled={loading || !code.trim()} style={{ padding:"4px 10px", background:"var(--muted)", border:"1px solid var(--border)", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:8, color:"var(--foreground)", opacity: loading || !code.trim() ? 0.4 : 1 }}>
           {loading ? "..." : "OK"}
         </button>
       </div>
@@ -823,25 +615,37 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
   onClose: () => void
   onSuccess: () => void
 }) {
-  const [entrega, setEntrega]           = React.useState<DeliveryType>("retirada")
-  const [endereco, setEndereco]         = React.useState(perfil?.adress ?? "")
-  const [cpf, setCpf]                   = React.useState(perfil?.cpf ?? "")
-  const [cep, setCep]                   = React.useState("")
-  const [salvarPerfil, setSalvar]       = React.useState(false)
-  const [incluirNegativos, setIncluir]  = React.useState(false)
-  const [cupomAplicado, setCupom]       = React.useState<{ code: string; discount: number } | null>(null)
-  const [opcoesFrete, setOpcoes]        = React.useState<OpcaoFrete[]>([])
-  const [freteSelecionado, setFrete]    = React.useState<OpcaoFrete | null>(null)
-  const [calculandoFrete, setCalc]      = React.useState(false)
-  const [freteErro, setFreteErro]       = React.useState("")
-  const [enviando, setEnviando]         = React.useState(false)
-  const [erro, setErro]                 = React.useState("")
-  const [pixGerado, setPixGerado]       = React.useState<{ copia_cola: string; qr_base64: string; valor: number } | null>(null)
+  const [entrega, setEntrega]         = React.useState<DeliveryType>("retirada")
+  const [endereco, setEndereco]       = React.useState(perfil?.adress ?? "")
+  const [cpf, setCpf]                 = React.useState(perfil?.cpf ?? "")
+  const [cep, setCep]                 = React.useState("")
+  const [salvarPerfil, setSalvar]     = React.useState(false)
+  const [incluirNegativos, setIncluir]= React.useState(false)
+  const [cupomAplicado, setCupom]     = React.useState<{ code: string; discount: number } | null>(null)
+  const [opcoesFrete, setOpcoes]      = React.useState<OpcaoFrete[]>([])
+  const [freteSelecionado, setFrete]  = React.useState<OpcaoFrete | null>(null)
+  const [calculandoFrete, setCalc]    = React.useState(false)
+  const [freteErro, setFreteErro]     = React.useState("")
+  const [enviando, setEnviando]       = React.useState(false)
+  const [erro, setErro]               = React.useState("")
+  const [pixGerado, setPixGerado]     = React.useState<{ copia_cola: string; qr_base64: string; valor: number } | null>(null)
+  const [pendingOrderId, setPendingOrderId] = React.useState<string | null>(null)
 
-  const precisaEndereco = entrega !== "retirada"
-  const desconto        = cupomAplicado?.discount ?? 0
-  const valorFrete      = precisaEndereco ? (freteSelecionado?.preco ?? 0) : 0
-  const total           = Math.max(0, cart.subtotal - desconto) + valorFrete
+  async function retryPix() {
+    if (!pendingOrderId) return
+    setErro(""); setEnviando(true)
+    try {
+      const pixRes  = await fetch("/api/store/payment/create-pix", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ order_id: pendingOrderId }) })
+      const pixData = await pixRes.json()
+      if (pixData.ok) { setPendingOrderId(null); setPixGerado(pixData.pix) }
+      else setErro(pixData.error ?? "Falha ao gerar Pix.")
+    } catch { setErro("Erro de conexão.") } finally { setEnviando(false) }
+  }
+
+  const precisaEnvio = entrega === "envio"
+  const desconto     = cupomAplicado?.discount ?? 0
+  const valorFrete   = precisaEnvio ? (freteSelecionado?.preco ?? 0) : 0
+  const total        = Math.max(0, cart.subtotal - desconto) + valorFrete
 
   function formatarCpf(v: string) {
     const d = v.replace(/\D/g,"").slice(0,11)
@@ -857,10 +661,7 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
     if (cepLimpo.length !== 8) { setFreteErro("CEP inválido."); return }
     setCalc(true); setFreteErro(""); setOpcoes([]); setFrete(null)
     try {
-      const res  = await fetch("/api/store/calculate-shipping", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ cep: cepLimpo, items: cart.items.map(i => ({ product_id: i.product.id, quantity: i.quantity })) }),
-      })
+      const res  = await fetch("/api/store/calculate-shipping", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ cep: cepLimpo, items: cart.items.map(i => ({ product_id: i.product.id, quantity: i.quantity })) }) })
       const data = await res.json()
       if (!data.ok) { setFreteErro(data.error ?? "Erro ao calcular frete."); return }
       setOpcoes(data.opcoes)
@@ -870,57 +671,52 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
 
   async function finalizar() {
     if (!user) { setErro("Faça login para finalizar."); return }
-    if (precisaEndereco && !endereco.trim()) { setErro("Informe o endereço."); return }
-    if (precisaEndereco && !cpfValido(cpf))  { setErro("CPF inválido."); return }
-    if (precisaEndereco && !freteSelecionado) { setErro("Calcule o frete."); return }
+    if (precisaEnvio && !endereco.trim()) { setErro("Informe o endereço."); return }
+    if (precisaEnvio && !cpfValido(cpf))  { setErro("CPF inválido."); return }
+    if (precisaEnvio && !freteSelecionado){ setErro("Calcule o frete."); return }
     setEnviando(true); setErro("")
     try {
       const res  = await fetch("/api/store/create-order", {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
           items: cart.items.map(i => ({ product_id: i.product.id, quantity: i.quantity, unit_price: i.product.price })),
-          delivery_type: entrega,
-          shipping_address: precisaEndereco ? endereco.trim() : null,
-          cpf: precisaEndereco ? cpf.replace(/\D/g,"") : null,
-          cep: precisaEndereco ? cep.replace(/\D/g,"") : null,
-          shipping_option: freteSelecionado,
-          coupon_code: cupomAplicado?.code ?? null,
-          salvar_perfil: precisaEndereco && salvarPerfil,
-          incluir_negativos: precisaEndereco && incluirNegativos,
+          delivery_type:    entrega,
+          shipping_address: precisaEnvio ? endereco.trim() : null,
+          cpf:              precisaEnvio ? cpf.replace(/\D/g,"") : null,
+          cep:              precisaEnvio ? cep.replace(/\D/g,"") : null,
+          shipping_option:  freteSelecionado,
+          coupon_code:      cupomAplicado?.code ?? null,
+          salvar_perfil:    precisaEnvio && salvarPerfil,
+          incluir_negativos: precisaEnvio && incluirNegativos,
         }),
       })
       const data = await res.json()
       if (!data.ok) { setErro(data.error ?? "Erro ao criar pedido"); return }
-      const pixRes  = await fetch("/api/store/payment/create-pix", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ order_id: data.order.id }),
-      })
+      const pixRes  = await fetch("/api/store/payment/create-pix", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ order_id: data.order.id }) })
       const pixData = await pixRes.json()
       if (pixData.ok) setPixGerado(pixData.pix)
-      else { setErro("Pedido criado, mas falhou ao gerar Pix."); onSuccess() }
+      else {
+        // Pedido foi criado mas Pix falhou — mostra erro com opção de tentar de novo
+        const msg = pixData.error ?? "Falha ao gerar Pix."
+        setErro(`Pedido criado! ${msg}`)
+        // Se retryable, guarda o order_id para tentar gerar o Pix de novo
+        if (pixData.retryable && data.order?.id) {
+          setPendingOrderId(data.order.id)
+        } else {
+          onSuccess()
+        }
+      }
     } catch { setErro("Erro ao processar o pedido.") } finally { setEnviando(false) }
   }
 
   return (
     <>
-      <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
-        onClick={onClose}
+      <motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }} onClick={onClose}
         style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:50 }} />
+      <motion.div initial={{ opacity:0, scale:0.95, y:20 }} animate={{ opacity:1, scale:1, y:0 }} exit={{ opacity:0, scale:0.95 }}
+        style={{ position:"fixed", inset:0, zIndex:60, display:"flex", alignItems:"center", justifyContent:"center", padding:16, pointerEvents:"none" }}>
+        <div style={{ background:"var(--card)", border:"2px solid #e5271a", borderRadius:8, width:"100%", maxWidth:460, maxHeight:"90vh", overflowY:"auto", pointerEvents:"auto" }}>
 
-      <motion.div
-        initial={{ opacity:0, scale:0.95, y:20 }}
-        animate={{ opacity:1, scale:1, y:0 }}
-        exit={{ opacity:0, scale:0.95 }}
-        style={{
-          position:"fixed", inset:0, zIndex:60, display:"flex",
-          alignItems:"center", justifyContent:"center", padding:16, pointerEvents:"none",
-        }}
-      >
-        <div style={{
-          background:"var(--card)", border:"2px solid #e5271a", borderRadius:8,
-          width:"100%", maxWidth:480, maxHeight:"90vh", overflowY:"auto",
-          pointerEvents:"auto",
-        }}>
           {/* Header */}
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderBottom:"1px solid var(--border)", position:"sticky", top:0, background:"var(--card)", zIndex:1 }}>
             <span style={{ fontFamily:"'Press Start 2P', monospace", fontSize:11, color:"#e5271a" }}>CHECKOUT</span>
@@ -929,7 +725,6 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
 
           <div style={{ padding:16, display:"flex", flexDirection:"column", gap:14 }}>
             {pixGerado ? (
-              // Tela do QR Pix
               <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, textAlign:"center" }}>
                 <p style={{ fontFamily:"monospace", fontSize:11 }}>Pedido criado! Pague com Pix.</p>
                 <div style={{ background:"#fff", padding:8, borderRadius:6 }}>
@@ -937,18 +732,10 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                 </div>
                 <p style={{ fontFamily:"monospace", fontSize:14, fontWeight:700, color:"#e5271a" }}>{brl(pixGerado.valor)}</p>
                 <div style={{ width:"100%", display:"flex", gap:6 }}>
-                  <input readOnly value={pixGerado.copia_cola}
-                    style={{ flex:1, background:"var(--background)", border:"1px solid var(--border)", borderRadius:3, padding:"4px 8px", fontFamily:"monospace", fontSize:9, color:"var(--foreground)" }}
-                    onFocus={e => e.target.select()} />
-                  <button onClick={() => navigator.clipboard.writeText(pixGerado.copia_cola)}
-                    style={{ padding:"4px 10px", background:"var(--muted)", border:"1px solid var(--border)", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:9 }}>
-                    COPIAR
-                  </button>
+                  <input readOnly value={pixGerado.copia_cola} style={{ flex:1, background:"var(--background)", border:"1px solid var(--border)", borderRadius:3, padding:"4px 8px", fontFamily:"monospace", fontSize:9, color:"var(--foreground)" }} onFocus={e => e.target.select()} />
+                  <CopyButton text={pixGerado.copia_cola} />
                 </div>
-                <button onClick={onSuccess}
-                  style={{ width:"100%", padding:12, background:"#e5271a", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>
-                  CONCLUIR
-                </button>
+                <button onClick={onSuccess} style={{ width:"100%", padding:12, background:"#e5271a", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
               </div>
             ) : (
               <>
@@ -962,34 +749,36 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                   ))}
                 </div>
 
-                {/* Entrega */}
+                {/* Entrega — duas opções */}
                 <div>
                   <div style={{ fontFamily:"monospace", fontSize:9, color:"var(--muted-foreground)", letterSpacing:2, marginBottom:6 }}>ENTREGA</div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                     {(Object.keys(ENTREGA_LABEL) as DeliveryType[]).map(tipo => (
-                      <button key={tipo} onClick={() => setEntrega(tipo)}
-                        style={{ padding:"8px 4px", border:`1px solid ${entrega === tipo ? "#e5271a" : "var(--border)"}`, borderRadius:3, background: entrega === tipo ? "rgba(229,39,26,0.1)" : "transparent", cursor:"pointer", fontFamily:"monospace", fontSize:9, color: entrega === tipo ? "#e5271a" : "var(--muted-foreground)" }}>
+                      <button key={tipo} onClick={() => setEntrega(tipo)} style={{
+                        padding:"12px 8px", border:`2px solid ${entrega === tipo ? "#e5271a" : "var(--border)"}`,
+                        borderRadius:4, background: entrega === tipo ? "rgba(229,39,26,0.08)" : "transparent",
+                        cursor:"pointer", fontFamily:"monospace", fontSize:10,
+                        color: entrega === tipo ? "#e5271a" : "var(--muted-foreground)",
+                        textAlign:"center", lineHeight:1.4,
+                      }}>
                         {ENTREGA_LABEL[tipo]}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Endereço e CPF */}
-                {precisaEndereco && (
+                {/* Campos de envio */}
+                {precisaEnvio && (
                   <>
-                    <input value={endereco} onChange={e => setEndereco(e.target.value)}
-                      placeholder="Endereço completo"
+                    <input value={endereco} onChange={e => setEndereco(e.target.value)} placeholder="Endereço completo"
                       style={{ background:"var(--background)", border:"1px solid var(--border)", borderRadius:3, padding:"6px 10px", fontFamily:"monospace", fontSize:10, color:"var(--foreground)", outline:"none" }} />
-                    <input value={cpf} onChange={e => setCpf(formatarCpf(e.target.value))}
-                      placeholder="CPF (necessário para envio)" inputMode="numeric"
+                    <input value={cpf} onChange={e => setCpf(formatarCpf(e.target.value))} placeholder="CPF (necessário para envio)" inputMode="numeric"
                       style={{ background:"var(--background)", border:"1px solid var(--border)", borderRadius:3, padding:"6px 10px", fontFamily:"monospace", fontSize:10, color:"var(--foreground)", outline:"none" }} />
 
                     {/* Frete */}
                     <div>
                       <div style={{ display:"flex", gap:6 }}>
-                        <input value={cep} onChange={e => setCep(formatarCep(e.target.value))}
-                          placeholder="CEP" inputMode="numeric"
+                        <input value={cep} onChange={e => setCep(formatarCep(e.target.value))} placeholder="CEP" inputMode="numeric"
                           style={{ flex:1, background:"var(--background)", border:"1px solid var(--border)", borderRadius:3, padding:"6px 10px", fontFamily:"monospace", fontSize:10, color:"var(--foreground)", outline:"none" }} />
                         <button onClick={calcularFrete} disabled={calculandoFrete || cep.replace(/\D/g,"").length !== 8}
                           style={{ padding:"6px 12px", background:"var(--muted)", border:"1px solid var(--border)", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:9, opacity: calculandoFrete || cep.replace(/\D/g,"").length !== 8 ? 0.4 : 1 }}>
@@ -998,10 +787,18 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                       </div>
                       {freteErro && <div style={{ fontFamily:"monospace", fontSize:8, color:"#e5271a", marginTop:4 }}>{freteErro}</div>}
                       {opcoesFrete.map(op => (
-                        <button key={op.id} onClick={() => setFrete(op)}
-                          style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 10px", marginTop:4, border:`1px solid ${freteSelecionado?.id === op.id ? "#e5271a" : "var(--border)"}`, borderRadius:3, background: freteSelecionado?.id === op.id ? "rgba(229,39,26,0.08)" : "transparent", cursor:"pointer", fontFamily:"monospace", fontSize:9, color: freteSelecionado?.id === op.id ? "#e5271a" : "var(--foreground)" }}>
-                          <span>{op.empresa} {op.nome} · {op.prazo}d</span>
-                          <span style={{ fontWeight:700 }}>{brl(op.preco)}</span>
+                        <button key={op.id} onClick={() => setFrete(op)} style={{
+                          width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center",
+                          padding:"8px 10px", marginTop:4,
+                          border:`1px solid ${freteSelecionado?.id === op.id ? "#e5271a" : "var(--border)"}`,
+                          borderRadius:3, background: freteSelecionado?.id === op.id ? "rgba(229,39,26,0.08)" : "transparent",
+                          cursor:"pointer", fontFamily:"monospace", fontSize:9,
+                          color: freteSelecionado?.id === op.id ? "#e5271a" : "var(--foreground)",
+                        }}>
+                          <span>{op.empresa} {op.nome}</span>
+                          <span style={{ fontFamily:"monospace", fontSize:10, fontWeight:700 }}>
+                            {brl(op.preco)} · {op.prazo}d
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -1012,12 +809,7 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                     </label>
 
                     {negativosPendentes > 0 && (
-                      <button onClick={() => setIncluir(v => !v)} style={{
-                        display:"flex", alignItems:"center", gap:10, padding:10,
-                        border:`1px solid ${incluirNegativos ? "#e5271a" : "var(--border)"}`,
-                        borderRadius:6, background: incluirNegativos ? "rgba(229,39,26,0.08)" : "transparent",
-                        cursor:"pointer", textAlign:"left", width:"100%",
-                      }}>
+                      <button onClick={() => setIncluir(v => !v)} style={{ display:"flex", alignItems:"center", gap:10, padding:10, border:`1px solid ${incluirNegativos ? "#e5271a" : "var(--border)"}`, borderRadius:6, background: incluirNegativos ? "rgba(229,39,26,0.08)" : "transparent", cursor:"pointer", textAlign:"left", width:"100%" }}>
                         <span style={{ width:18, height:18, borderRadius:3, border:`1px solid ${incluirNegativos ? "#e5271a" : "var(--muted-foreground)"}`, background: incluirNegativos ? "#e5271a" : "transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
                           {incluirNegativos && <Check size={12} color="#fff" />}
                         </span>
@@ -1039,7 +831,7 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                   </div>
                   {desconto > 0 && (
                     <div style={{ display:"flex", justifyContent:"space-between", fontFamily:"monospace", fontSize:10, color:"#22c55e" }}>
-                      <span>Desconto</span><span>−{brl(desconto)}</span>
+                      <span>Desconto</span><span>− {brl(desconto)}</span>
                     </div>
                   )}
                   {valorFrete > 0 && (
@@ -1053,7 +845,17 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                 </div>
 
                 {!user && <p style={{ fontFamily:"monospace", fontSize:9, color:"#e5271a", textAlign:"center" }}>Faça login para finalizar.</p>}
-                {erro    && <p style={{ fontFamily:"monospace", fontSize:9, color:"#e5271a", textAlign:"center" }}>{erro}</p>}
+                {erro    && (
+                  <div style={{ textAlign:"center" }}>
+                    <p style={{ fontFamily:"monospace", fontSize:9, color:"#e5271a", marginBottom: pendingOrderId ? 8 : 0 }}>{erro}</p>
+                    {pendingOrderId && (
+                      <button onClick={retryPix} disabled={enviando}
+                        style={{ padding:"8px 16px", background:"var(--muted)", border:"1px solid var(--border)", borderRadius:4, cursor:"pointer", fontFamily:"monospace", fontSize:9, color:"var(--foreground)", opacity: enviando ? 0.4 : 1 }}>
+                        {enviando ? "Tentando..." : "↺ Tentar gerar Pix novamente"}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <button onClick={finalizar} disabled={enviando || !user}
                   style={{ padding:12, background:"#e5271a", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10, display:"flex", alignItems:"center", justifyContent:"center", gap:8, opacity: enviando || !user ? 0.4 : 1 }}>
