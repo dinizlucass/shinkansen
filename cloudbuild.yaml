@@ -11,7 +11,7 @@ steps:
       - southamerica-east1
       - --project
       - shinkansen-films
-      - --quiet
+      
 
 options:
   logging: CLOUD_LOGGING_ONLY
