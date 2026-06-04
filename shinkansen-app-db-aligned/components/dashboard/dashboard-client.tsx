@@ -150,32 +150,8 @@ function formatFilmType(type: string) {
   return type
 }
 
-function formatScanType(type: string | null) {
-  if (type === "normal") return "Normal"
-  if (type === "com_trilhas") return "Com trilhas"
-  if (type === "normal_e_com_trilhas") return "Normal + trilhas"
-  if (type === "so_revelar") return "So revelar"
-  return type ?? "Nao informado"
-}
-
 export function DashboardClient({ user, orders, profile }: DashboardClientProps) {
   const router = useRouter()
-  const [selectedOrder, setSelectedOrder] = useState<string | null>(null)
-  const profileReady = isProfileComplete(profile)
-
-  const activeOrders = useMemo(
-    () => orders.filter((order) => order.status !== "finalizado"),
-    [orders],
-  )
-  const completedOrders = useMemo(
-    () => orders.filter((order) => order.status === "finalizado"),
-    [orders],
-  )
-  const totalFilms = useMemo(() => orders.reduce((sum, order) => sum + order.films.length, 0), [orders])
-  const totalSpent = useMemo(
-    () => orders.reduce((sum, order) => sum + Number(order.total_value ?? 0), 0),
-    [orders],
-  )
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -207,6 +183,45 @@ export function DashboardClient({ user, orders, profile }: DashboardClientProps)
       </header>
 
       <main className="container mx-auto px-6 py-8">
+        <ServicosContent orders={orders} profile={profile} />
+      </main>
+    </div>
+  )
+}
+
+/**
+ * Conteúdo da dashboard de Serviços (stats + seções), SEM header.
+ * Usado tanto pelo DashboardClient quanto pelo toggle Serviços/Loja.
+ */
+export function ServicosContent({
+  orders,
+  profile,
+}: {
+  orders: Order[]
+  profile: Profile | null
+}) {
+  const [selectedOrder, setSelectedOrder] = useState<string | null>(null)
+  const profileReady = isProfileComplete(profile)
+
+  const activeOrders = useMemo(
+    () => orders.filter((order) => order.status !== "finalizado"),
+    [orders],
+  )
+  const completedOrders = useMemo(
+    () => orders.filter((order) => order.status === "finalizado"),
+    [orders],
+  )
+  const totalFilms = useMemo(() => orders.reduce((sum, order) => sum + order.films.length, 0), [orders])
+  const totalEmAberto = useMemo(
+    () =>
+      orders
+        .filter((order) => order.status === "aguardando_pagamento")
+        .reduce((sum, order) => sum + Number(order.total_value ?? 0), 0),
+    [orders],
+  )
+
+  return (
+    <>
         <FadeIn>
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
             <div>
@@ -261,7 +276,7 @@ export function DashboardClient({ user, orders, profile }: DashboardClientProps)
             <StatsCard label="PEDIDOS ATIVOS" value={activeOrders.length} icon={<Package className="h-5 w-5" />} />
             <StatsCard label="TOTAL DE PEDIDOS" value={orders.length} icon={<Camera className="h-5 w-5" />} />
             <StatsCard label="TOTAL DE FILMES" value={totalFilms} icon={<Film className="h-5 w-5" />} />
-            <StatsCard label="TOTAL INVESTIDO" value={formatCurrency(totalSpent)} icon={<Wallet className="h-5 w-5" />} />
+            <StatsCard label="TOTAL AGUARDANDO PAGAMENTO" value={formatCurrency(totalEmAberto)} icon={<Wallet className="h-5 w-5" />} highlight={totalEmAberto > 0} />
           </div>
         </SlideIn>
 
@@ -318,8 +333,7 @@ export function DashboardClient({ user, orders, profile }: DashboardClientProps)
             )}
           </section>
         </FadeIn>
-      </main>
-    </div>
+    </>
   )
 }
 
@@ -327,18 +341,20 @@ function StatsCard({
   label,
   value,
   icon,
+  highlight = false,
 }: {
   label: string
   value: string | number
   icon: React.ReactNode
+  highlight?: boolean
 }) {
   return (
-    <Card className="border-border hover:border-primary/50 transition-colors">
+    <Card className={`transition-colors ${highlight ? "border-primary/60 bg-primary/5" : "border-border hover:border-primary/50"}`}>
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-muted-foreground">{icon}</span>
+          <span className={highlight ? "text-primary" : "text-muted-foreground"}>{icon}</span>
         </div>
-        <p className="text-2xl font-mono font-bold">{value}</p>
+        <p className={`text-2xl font-mono font-bold ${highlight ? "text-primary" : ""}`}>{value}</p>
         <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">{label}</p>
       </CardContent>
     </Card>

@@ -1,0 +1,24 @@
+[{
+    "file_name": "01.jpg",
+    "author": "Larissa Higa",
+    "title": "Naif café",
+    "order": 1,
+    "url": "/slides/01.jpg",
+    "orientation": "portrait"
+  },
+{
+    "file_name": "02.jpg",
+    "author": "Larissa Higa",
+    "title": "Carro velho",
+    "order": 1,
+    "url": "/slides/02.jpg",
+    "orientation": "landscape"
+  },
+{
+    "file_name": "03.jpg",
+    "author": "Larissa Higa",
+    "title": "Bar da esquina",
+    "order": 1,
+    "url": "/slides/03.jpg",
+    "orientation": "portrait"
+  }]

@@ -5,7 +5,7 @@ import React from "react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, LogIn, Package, Shield, User, Camera } from "lucide-react"
+import { Home, LogIn, Package, Shield, User, Camera, ShoppingBag } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -30,6 +30,12 @@ const navItems: NavItem[] = [
     label: "INICIO",
     description: "Tela inicial",
     icon: <Home className="h-5 w-5" />,
+  },
+  {
+    href: "/store",
+    label: "LOJA",
+    description: "Monte seu time de filmes e acessorios",
+    icon: <ShoppingBag className="h-5 w-5" />,
   },
   {
     href: "/orders",
