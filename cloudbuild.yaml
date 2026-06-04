@@ -1,0 +1,17 @@
+steps:
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - shinkansen-lab
+      - --source
+      - shinkansen-app-db-aligned
+      - --region
+      - southamerica-east1
+      - --project
+      - shinkansen-films
+      - --quiet
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -47,7 +47,6 @@ interface Film {
   film_type: string
   push_pull: string | null
   notes: string | null
-  scan_type: string | null
   file_format: string | null
   status: FilmStatus
   film_services?: FilmServiceJoin[]
@@ -449,7 +448,6 @@ export function AdminDashboardClient({
                                 <p className="font-mono text-xs text-muted-foreground">
                                   {film.film_type}
                                   {film.push_pull ? ` • puxada ${film.push_pull}` : ""}
-                                  {film.scan_type ? ` • ${film.scan_type}` : ""}
                                   {film.file_format ? ` • ${film.file_format.toUpperCase()}` : ""}
                                 </p>
                                 {film.notes && (
