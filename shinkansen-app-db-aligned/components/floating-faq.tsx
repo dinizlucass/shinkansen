@@ -1,18 +1,27 @@
 "use client"
 
 import { useState } from "react"
+import { usePathname } from "next/navigation" // 🌟 1. Importar o hook de rotas
 import { motion, AnimatePresence } from "framer-motion"
 import { HelpCircle, X } from "lucide-react"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 
+// 🌟 2. Lista de páginas onde o FAQ NÃO deve aparecer
+const BLACKLISTED_ROUTES = [
+  "/store",       // Tela de triagem/operação do laboratório
+  "/admin",         // Painel administrativo completo
+  "/account",
+  "/auth/login"       // Configurações de conta do usuário
+]
+
 const faqItems = [
   {
     id: "faq-1",
     question: "O que é revelação?",
     answer:
-      "Revelação é o processo quimico que ocorre para tornar a imagem visível e permanente no filme fotografico. O resultado final é um filme (negativo) com a imagem fixada. O processo de revelação é irreversivel e não é o mesmo que ampliação (impressão) de fotos, esse é  um processo seguinte.",
+      "Revelação é o processo quimico que ocorre para tornar a imagem visível e permanente no filme fotografico. O resultado final é um filme (negativo) com a imagem fixada. O processo de revelação é irreversivel e não é o mesmo que ampliação (impressão) de fotos, esse é um processo seguinte.",
   },
   {
     id: "faq-2",
@@ -43,11 +52,20 @@ const faqItems = [
 const faqGifPath = "/faq-widget.gif"
 
 export function FloatingFaq() {
+  const pathname = usePathname() // 🌟 3. Capturar a rota atual
+  
   const [open, setOpen] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [gifFailed, setGifFailed] = useState(false)
 
-  if (dismissed) {
+  // 🌟 4. Verificar se a rota atual (ou sub-rota) está na blacklist
+  // O .some com .startsWith garante que se "/admin" estiver bloqueado, "/admin/config" também estará.
+  const isBlacklisted = BLACKLISTED_ROUTES.some((route) => 
+    pathname === route || pathname?.startsWith(`${route}/`)
+  )
+
+  // Se foi fechado manualmente pelo usuário ou se está em uma página proibida, não renderiza nada
+  if (dismissed || isBlacklisted) {
     return null
   }
 

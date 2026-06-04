@@ -44,6 +44,8 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap"
           rel="stylesheet"
         />
+        <link href="https://fonts.googleapis.com/css2?family=Michroma&display=swap" rel="stylesheet"/>
+
       </head>
       <body className={`font-sans antialiased`}>
         {children}

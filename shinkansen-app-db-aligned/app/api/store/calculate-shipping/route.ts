@@ -63,7 +63,53 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ ok: true, opcoes })
+    // ── Filtro de transportadoras ─────────────────────────────────────
+    // Controla quais transportadoras aparecem no checkout.
+    // Use o nome que o Melhor Envio retorna em op.empresa / op.nome.
+    //
+    // PERMITIDAS: lista de substrings (case-insensitive).
+    //   Se vazia [] → mostra todas.
+    //   Se preenchida → só mostra as que baterem com pelo menos uma substring.
+    //
+    // Exemplos de nomes retornados pelo ME:
+    //   "Correios" · "PAC" · "SEDEX" · "Mini Envios"
+    //   "Jadlog" · "Jadlog .Package" · "Jadlog .Com"
+    //   "Azul Cargo" · "Loggi" · "Latam Cargo" · "Total Express"
+    //
+    const TRANSPORTADORAS_PERMITIDAS: string[] = [
+      "Loggi Express",
+      "Jadlog .Package",
+      "SEDEX",
+      "PAC",
+      "Total Express Standard",
+    ]
+
+    const opcoesFiltradas = TRANSPORTADORAS_PERMITIDAS.length === 0
+      ? opcoes
+      : opcoes.filter(op => {
+          const label = `${op.empresa ?? ""} ${op.nome ?? ""}`.toLowerCase()
+          return TRANSPORTADORAS_PERMITIDAS.some(t => label.includes(t.toLowerCase()))
+        })
+
+    if (!opcoesFiltradas.length) {
+      return NextResponse.json({
+        ok: false,
+        error: "Nenhuma opção de frete disponível para este CEP.",
+      })
+    }
+
+    // ── Margem operacional ─────────────────────────────────────────────
+    const MARGEM_FIXA_BRL = 3.00   // ← ajuste aqui (R$)
+    const MARGEM_PORCENTO = 0.10   // ← ajuste aqui (0.10 = 10%)
+
+    const opcoesComMargem = opcoesFiltradas.map(op => ({
+      ...op,
+      preco: Math.ceil(
+        (op.preco + MARGEM_FIXA_BRL + op.preco * MARGEM_PORCENTO) * 100
+      ) / 100,
+    }))
+
+    return NextResponse.json({ ok: true, opcoes: opcoesComMargem })
   } catch (e: any) {
     console.error("[calculate-shipping]", e)
     return NextResponse.json(

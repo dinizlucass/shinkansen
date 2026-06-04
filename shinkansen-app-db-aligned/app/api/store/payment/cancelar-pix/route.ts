@@ -1,16 +1,16 @@
 /**
  * app/api/store/payment/cancelar-pix/route.ts
  *
- * Cancela uma cobrança Pix ativa na Efí.
- * Chamado pelo backend local (FastAPI) ao marcar pedido como cortesia.
+ * Cancela uma cobrança Pix ativa na Efi (cortesia / admin).
+ * Usa getEfiPixAccessToken e getEfiPixConfig de lib/payments/efi.
  *
- * Efí aceita cancelamento apenas de cobranças ATIVAS.
- * Após cancelar, status vira REMOVIDA_PELO_USUARIO_RECEBEDOR.
+ * A lib do colega nao tem funcao de cancelamento — fazemos o DELETE
+ * diretamente com o token dela, seguindo o mesmo padrao de requestWithMtls.
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient }              from "@/lib/supabase/server"
-import { gerarTokenEfi, EFI_BASE }   from "@/lib/store/efi-pix"
+import { getEfiPixAccessToken, getEfiPixConfig } from "@/lib/payments/efi"
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const supabase = await createClient()
 
-    // Tenta buscar o charge_id em store_orders primeiro, depois em orders
+    // Busca charge_id em store_orders ou orders
     let chargeId: string | null = null
     let tabela = "store_orders"
 
@@ -33,7 +33,6 @@ export async function POST(req: NextRequest) {
 
     if (storeOrder?.payment_charge_id) {
       chargeId = storeOrder.payment_charge_id
-      tabela   = "store_orders"
     } else {
       const { data: ordem } = await supabase
         .from("orders")
@@ -47,20 +46,22 @@ export async function POST(req: NextRequest) {
     }
 
     if (!chargeId) {
-      // Sem cobrança registrada — atualiza banco diretamente
+      // Sem cobranca registrada — atualiza banco diretamente
       await supabase
         .from(tabela)
         .update({ payment_status: "REMOVIDA_PELO_USUARIO_RECEBEDOR" })
         .eq("id", order_id)
       return NextResponse.json({
-        ok: true,
+        ok:   true,
         aviso: "Sem cobranca registrada — status atualizado diretamente.",
       })
     }
 
-    // Cancela na Efi: DELETE /v2/cob/{txid}
-    const token = await gerarTokenEfi()
-    const resp  = await fetch(`${EFI_BASE}/v2/cob/${chargeId}`, {
+    // Cancela na Efi usando token da lib do colega
+    const { baseUrl } = getEfiPixConfig()
+    const token       = await getEfiPixAccessToken()
+
+    const resp = await fetch(`${baseUrl}/v2/cob/${chargeId}`, {
       method:  "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -73,7 +74,6 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Atualiza o banco com o status real da Efi
     await supabase
       .from(tabela)
       .update({

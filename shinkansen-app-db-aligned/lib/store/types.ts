@@ -7,6 +7,7 @@
 export type ProductCategory =
   | "filme_35mm"
   | "filme_120"
+  | "camera"
   | "acessorio"
   | "outro"
 
@@ -38,7 +39,7 @@ export interface CartItem {
   quantity: number
 }
 
-export type DeliveryType = "correios" | "transportadora" | "retirada"
+export type DeliveryType = "envio" | "retirada"
 
 export interface Coupon {
   id:        string
