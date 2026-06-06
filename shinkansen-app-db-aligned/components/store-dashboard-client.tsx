@@ -19,6 +19,31 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 
+// ── CopyField — campo clicável que copia ao toque ────────────────────────────
+
+function CopyField({ value }: { value: string }) {
+  const [copiado, setCopiado] = React.useState(false)
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    } catch {}
+  }
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); copiar() }}
+      className={`w-full text-left font-mono text-[11px] break-all rounded p-2 border transition-all cursor-pointer ${
+        copiado
+          ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+          : "bg-background border-border hover:border-primary/50 text-foreground"
+      }`}
+    >
+      {copiado ? "✓ COPIADO" : value}
+    </button>
+  )
+}
+
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
 interface StoreOrderItem {
@@ -136,8 +161,10 @@ export function StoreDashboardClient({ orders }: StoreDashboardClientProps) {
     () => orders.filter((o) => ["entregue", "cancelado"].includes(o.status)),
     [orders],
   )
-  const totalSpent = useMemo(
-    () => orders.reduce((sum, o) => sum + Number(o.total_value ?? 0), 0),
+  const totalPendente = useMemo(
+    () => orders
+      .filter((o) => o.status === "pendente")
+      .reduce((sum, o) => sum + Number(o.total_value ?? 0), 0),
     [orders],
   )
   const totalItens = useMemo(
@@ -152,7 +179,7 @@ export function StoreDashboardClient({ orders }: StoreDashboardClientProps) {
         <StatsCard label="PEDIDOS ATIVOS" value={activeOrders.length} icon={<Package className="h-5 w-5" />} />
         <StatsCard label="TOTAL DE PEDIDOS" value={orders.length} icon={<ShoppingBag className="h-5 w-5" />} />
         <StatsCard label="ITENS COMPRADOS" value={totalItens} icon={<Package className="h-5 w-5" />} />
-        <StatsCard label="TOTAL GASTO" value={formatCurrency(totalSpent)} icon={<Wallet className="h-5 w-5" />} />
+        <StatsCard label="AGUARDANDO PAGAMENTO" value={formatCurrency(totalPendente)} icon={<Wallet className="h-5 w-5" />} />
       </div>
 
       {/* Em andamento */}
@@ -247,7 +274,7 @@ function StoreOrderCard({
         className={`border-border hover:border-primary/50 transition-all cursor-pointer ${
           isSelected ? "border-primary bg-primary/5" : ""
         }`}
-        onClick={onSelect}
+        onClick={() => { if (!isSelected) onSelect() }}
       >
         <CardContent className={compact ? "p-4" : "p-6"}>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -276,7 +303,14 @@ function StoreOrderCard({
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 className="mt-4 pt-4 border-t border-border"
+                onClick={(e) => e.stopPropagation()}
               >
+                {/* Fechar */}
+                <div className="flex justify-end mb-2">
+                  <button onClick={onSelect} className="text-muted-foreground hover:text-foreground transition-colors font-mono text-xs flex items-center gap-1">
+                    ✕ fechar
+                  </button>
+                </div>
                 {/* Barra de progresso do pedido (oculta se cancelado) */}
                 {order.status !== "cancelado" && (
                   <div className="mb-6">
@@ -329,9 +363,7 @@ function StoreOrderCard({
                         <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
                           Pix copia e cola
                         </p>
-                        <p className="font-mono text-[11px] break-all bg-background border border-border rounded p-2">
-                          {order.payment_last_payload.qrcode.qrcode}
-                        </p>
+                        <CopyField value={order.payment_last_payload.qrcode.qrcode ?? ""} />
                       </div>
                     </div>
                   </div>
@@ -389,7 +421,17 @@ function StoreOrderCard({
                         </p>
                       )}
                       {order.tracking_code && (
-                        <p>Rastreio: <span className="text-foreground">{order.tracking_code}</span></p>
+                        <p>Rastreio:{" "}
+                          <a
+                            href={`https://melhorrastreio.com.br/rastreio/${order.tracking_code}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {order.tracking_code}
+                          </a>
+                        </p>
                       )}
                       <div className="border-t border-border/40 pt-2 mt-2 space-y-1">
                         {order.coupon_discount ? (

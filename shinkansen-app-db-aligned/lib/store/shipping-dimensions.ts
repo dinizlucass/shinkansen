@@ -24,6 +24,7 @@ const DIMENSOES: Record<ProductCategory, PackageDimensions> = {
   filme_35mm: { weight: 0.05, height: 3,  width: 3,  length: 7  },
   filme_120:  { weight: 0.05, height: 3,  width: 6,  length: 7  },
   camera:     { weight: 0.80, height: 12, width: 16, length: 14 },
+  camera_recarregavel: { weight: 0.40, height: 10, width: 14, length: 12 },
   acessorio:  { weight: 0.20, height: 5,  width: 12, length: 12 },
   outro:      { weight: 0.30, height: 8,  width: 12, length: 14 },
 }

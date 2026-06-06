@@ -25,6 +25,29 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
+function CopyField({ value }: { value: string }) {
+  const [copiado, setCopiado] = React.useState(false)
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2000)
+    } catch {}
+  }
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); copiar() }}
+      className={`w-full text-left font-mono text-xs break-all rounded p-2 border transition-all cursor-pointer ${
+        copiado
+          ? "bg-emerald-500/10 border-emerald-500 text-emerald-500"
+          : "bg-muted/30 border-border hover:border-primary/50 text-foreground"
+      }`}
+    >
+      {copiado ? "✓ COPIADO" : value}
+    </button>
+  )
+}
+
 interface Service {
   id: string
   name: string
@@ -276,7 +299,7 @@ export function ServicosContent({
             <StatsCard label="PEDIDOS ATIVOS" value={activeOrders.length} icon={<Package className="h-5 w-5" />} />
             <StatsCard label="TOTAL DE PEDIDOS" value={orders.length} icon={<Camera className="h-5 w-5" />} />
             <StatsCard label="TOTAL DE FILMES" value={totalFilms} icon={<Film className="h-5 w-5" />} />
-            <StatsCard label="TOTAL AGUARDANDO PAGAMENTO" value={formatCurrency(totalEmAberto)} icon={<Wallet className="h-5 w-5" />} highlight={totalEmAberto > 0} />
+            <StatsCard label="TOTAL EM ABERTO" value={formatCurrency(totalEmAberto)} icon={<Wallet className="h-5 w-5" />} highlight={totalEmAberto > 0} />
           </div>
         </SlideIn>
 
@@ -386,7 +409,7 @@ function OrderCard({
         className={`border-border hover:border-primary/50 transition-all cursor-pointer ${
           isSelected ? "border-primary bg-primary/5" : ""
         }`}
-        onClick={onSelect}
+        onClick={() => { if (!isSelected) onSelect() }}
       >
         <CardContent className={compact ? "p-4" : "p-6"}>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -415,13 +438,19 @@ function OrderCard({
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
                 className="mt-4 pt-4 border-t border-border"
+                onClick={(e) => e.stopPropagation()}
               >
+                <div className="flex justify-end mb-2">
+                  <button onClick={onSelect} className="text-muted-foreground hover:text-foreground transition-colors font-mono text-xs flex items-center gap-1">
+                    ✕ fechar
+                  </button>
+                </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-3">
                     <h4 className="font-mono text-xs uppercase text-muted-foreground">Filmes</h4>
                     {order.films.map((film) => {
                       // 1. Monta os passos dinamicamente para este filme específico
-                      const stepsForThisFilm: string[] = [...CORE_STATUS_STEPS];
+                      const stepsForThisFilm = [...CORE_STATUS_STEPS];
 
                       const needsSuporte = film.status === "suporte" || ["limpeza", "edicao", "concluido"].includes(film.status);
                       if (needsSuporte) {
@@ -601,10 +630,10 @@ function OrderCard({
                               order.payment_last_payload?.qrcode?.qrcode) && (
                               <div className="rounded border border-border bg-muted/30 p-3">
                                 <p className="mb-2 text-xs uppercase">Pix copia e cola</p>
-                                <p className="break-all text-xs">
-                                  {order.payment_last_payload?.charge?.pixCopiaECola ||
-                                    order.payment_last_payload?.qrcode?.qrcode}
-                                </p>
+                                <CopyField value={
+                                  order.payment_last_payload?.charge?.pixCopiaECola ||
+                                  order.payment_last_payload?.qrcode?.qrcode || ""
+                                } />
                               </div>
                             )}
                             {order.payment_last_payload?.qrcode?.imagemQrcode && (

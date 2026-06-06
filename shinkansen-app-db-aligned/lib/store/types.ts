@@ -8,6 +8,7 @@ export type ProductCategory =
   | "filme_35mm"
   | "filme_120"
   | "camera"
+  | "camera_recarregavel"
   | "acessorio"
   | "outro"
 

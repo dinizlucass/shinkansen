@@ -10,9 +10,9 @@
 import * as React from "react"
 
 const TEXT      = "SHINKANSEN FILMS"
-const ROWS      = 16        // Quantidade de linhas por camada
+const ROWS      = 14        // Quantidade de linhas por camada
 const COLS      = 2         // Repetições horizontais base
-const FONT_SIZE = 70        // px
+const FONT_SIZE = 90        // px
 const GAP_X     = 20        // Espaço horizontal entre repetições
 const GAP_Y     = 20        // Espaço vertical entre linhas
 const COLOR     = "#e5271a"
@@ -28,15 +28,15 @@ const LAYERS = [
     direction: "normal",
     offsetMultiplier: 0
   },
-  {
-    id: "mid-layer",
-    angle: -28,
-    speed: 25,
-    delay: "-5s",           // 🌟 Já nasce em outro ponto do ciclo (5 segundos rodando)
-    opacity: 0.25,
-    direction: "normal",
-    offsetMultiplier: 1
-  },
+  //{
+  //  id: "mid-layer",
+  //  angle: -28,
+  //  speed: 25,
+  //  delay: "-5s",           // 🌟 Já nasce em outro ponto do ciclo (5 segundos rodando)
+  //  opacity: 0.25,
+  //  direction: "normal",
+  //  offsetMultiplier: 1
+  //},
   {
     id: "front-layer",
     angle: -28,

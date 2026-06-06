@@ -1,150 +1,271 @@
 "use client"
 
-import { useState } from "react"
-import { usePathname } from "next/navigation" // 🌟 1. Importar o hook de rotas
+/**
+ * components/floating-faq.tsx
+ *
+ * Mascote FAQ inspirado no Clippy do Word.
+ * Apresenta informação em estágios conversacionais:
+ *   1. Saudação — bolha pequena
+ *   2. Tópicos — lista compacta de perguntas
+ *   3. Resposta — uma resposta por vez com "voltar"
+ */
+
+import { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
-import { HelpCircle, X } from "lucide-react"
+import { X } from "lucide-react"
 
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Button } from "@/components/ui/button"
+// ── Rotas onde o FAQ não aparece ──────────────────────────────────────
 
-// 🌟 2. Lista de páginas onde o FAQ NÃO deve aparecer
 const BLACKLISTED_ROUTES = [
-  "/store",       // Tela de triagem/operação do laboratório
-  "/admin",         // Painel administrativo completo
+  "/store",
+  "/admin",
   "/account",
-  "/auth/login"       // Configurações de conta do usuário
+  "/auth/login",
+]
+
+// ── Conteúdo ──────────────────────────────────────────────────────────
+
+const SAUDACOES = [
+  "Oi! Primeira vez revelando filme?",
+  "E aí! Posso ajudar com alguma dúvida?",
+  "Opa! Quer saber mais sobre revelação?",
 ]
 
 const faqItems = [
   {
     id: "faq-1",
-    question: "O que é revelação?",
+    short: "O que é revelação?",
     answer:
-      "Revelação é o processo quimico que ocorre para tornar a imagem visível e permanente no filme fotografico. O resultado final é um filme (negativo) com a imagem fixada. O processo de revelação é irreversivel e não é o mesmo que ampliação (impressão) de fotos, esse é um processo seguinte.",
+      "É o processo químico que torna a imagem visível e permanente no filme. O resultado é um negativo com a imagem fixada. Não é o mesmo que impressão de fotos — esse é o passo seguinte.",
   },
   {
     id: "faq-2",
-    question: "O que é filme Virgem e filme Velado?",
+    short: "Filme virgem vs velado?",
     answer:
-      "Filme Virgem: É o rolo de filme fotográfico novo, que ainda não foi exposto à luz. A sua emulsão está intacta e pronta para gravar fotos.  Filme Velado: É o filme que sofreu uma exposição acidental e excessiva à luz externa (fora da câmara), seja por abrir a tampa traseira da câmara ou por vazamento de luz no rolo. Esta luz indesejada queima a emulsão, inutilizando ou manchando as fotos permanentemente.",
+      "Virgem: rolo novo, nunca exposto à luz, pronto para fotografar.\n\nVelado: filme que sofreu exposição acidental à luz externa (tampa aberta, vazamento no rolo). A luz queima a emulsão e inutiliza as fotos.",
   },
   {
     id: "faq-3",
-    question: "Qual a diferença entre Jpg, Dng e Raw?",
+    short: "JPG, DNG ou RAW?",
     answer:
-      "Jpg é um formato de imagem comprimido (acabado voltado para fotos que não serão editadas), Dng é um formato de imagem não comprimido (acabado voltado para fotos que serão editadas) e Raw é um formato de imagem que contém todos os dados do sensor da câmera (bruto, voltado para quem quer fazer o processo de conversão de cores do 0).",
+      "JPG → comprimido, pronto para usar sem editar.\n\nDNG → não comprimido, ideal para quem vai editar.\n\nRAW → dados brutos do sensor, para quem quer fazer a conversão de cores do zero.",
   },
   {
     id: "faq-4",
-    question: "Qual a qualidade da digitalização?",
+    short: "Qualidade da digitalização?",
     answer:
-      "Todas as digitalizações são feitas com alta qualidade (24mp 14bits), utilizando o mesmo equipamento (Sony Alpha 7II + Takumar 50mm f4).",
+      "Todas as digitalizações são feitas em alta qualidade: 24MP, 14 bits. Equipamento: Sony Alpha 7II + Takumar 50mm f/4.",
   },
   {
     id: "faq-5",
-    question: "Qual a diferença entre Digitalização com trilhas e tradicional?",
+    short: "Trilhas vs tradicional?",
     answer:
-      "A digitalização tradicional inclui apenas o fotograma enquanto a digitalização com trilhas mantém tambem a perfuração do filme na imagem final.",
+      "Tradicional → só o fotograma, sem bordas.\n\nCom trilhas → mantém a perfuração do filme na imagem final, aquele visual clássico.",
   },
 ]
 
+// ── Tipos de estágio ──────────────────────────────────────────────────
+
+type Stage = "greeting" | "topics" | "answer"
+
 const faqGifPath = "/faq-widget.gif"
 
-export function FloatingFaq() {
-  const pathname = usePathname() // 🌟 3. Capturar a rota atual
-  
-  const [open, setOpen] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
-  const [gifFailed, setGifFailed] = useState(false)
+// ══════════════════════════════════════════════════════════════════════
+// COMPONENTE
+// ══════════════════════════════════════════════════════════════════════
 
-  // 🌟 4. Verificar se a rota atual (ou sub-rota) está na blacklist
-  // O .some com .startsWith garante que se "/admin" estiver bloqueado, "/admin/config" também estará.
-  const isBlacklisted = BLACKLISTED_ROUTES.some((route) => 
-    pathname === route || pathname?.startsWith(`${route}/`)
+export function FloatingFaq() {
+  const pathname = usePathname()
+
+  const [dismissed, setDismissed] = useState(false)
+  const [stage, setStage]         = useState<Stage>("greeting")
+  const [answerId, setAnswerId]   = useState<string | null>(null)
+  const [gifFailed, setGifFailed] = useState(false)
+  const [saudacao]                = useState(() =>
+    SAUDACOES[Math.floor(Math.random() * SAUDACOES.length)]
   )
 
-  // Se foi fechado manualmente pelo usuário ou se está em uma página proibida, não renderiza nada
-  if (dismissed || isBlacklisted) {
-    return null
+  // Auto-mostra saudação com delay
+  const [visivel, setVisivel] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setVisivel(true), 2500)
+    return () => clearTimeout(t)
+  }, [])
+
+  const isBlacklisted = BLACKLISTED_ROUTES.some(
+    (route) => pathname === route || pathname?.startsWith(`${route}/`)
+  )
+
+  if (dismissed || isBlacklisted) return null
+
+  const answer = faqItems.find((f) => f.id === answerId)
+
+  function handleTopicClick(id: string) {
+    setAnswerId(id)
+    setStage("answer")
+  }
+
+  function handleBack() {
+    setStage("topics")
+    setAnswerId(null)
+  }
+
+  function handleDismiss() {
+    setVisivel(false)
+    setTimeout(() => setDismissed(true), 200)
   }
 
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-[70] flex flex-col items-end sm:right-6 sm:bottom-6">
+    <div className="pointer-events-none fixed left-2 bottom-2 z-[70] flex flex-col items-end sm:right-4 sm:bottom-4">
+
+      {/* ── Bolha de conversa ── */}
       <AnimatePresence>
-        {open && (
+        {visivel && (
           <motion.div
-            initial={{ opacity: 0, y: 18, scale: 0.96 }}
+            initial={{ opacity: 0, y: 12, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.96 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="pointer-events-auto mb-3 w-[min(88vw,24rem)] overflow-hidden rounded-md border border-primary/60 bg-card shadow-[0_0_0_1px_rgba(255,20,40,0.15),0_18px_50px_rgba(0,0,0,0.45)]"
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="pointer-events-auto mb-2 w-[min(80vw,20rem)]"
           >
-            <div className="flex items-center justify-between border-b border-primary/30 bg-primary px-4 py-3 text-primary-foreground">
-              <div>
-                <p className="font-mono text-xs uppercase tracking-[0.18em]">FAQ Rapido</p>
-                <p className="font-mono text-[11px] opacity-90">Perguntas e respostas</p>
+            {/* Caixa com seta */}
+            <div className="relative rounded-lg border border-border bg-card shadow-lg">
+
+              {/* Header da bolha */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-border/60">
+                <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
+                  {stage === "greeting" ? "Sekkyō-sha" : stage === "topics" ? "Escolha um tópico" : "Resposta"}
+                </span>
+                <button
+                  onClick={handleDismiss}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Fechar FAQ"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
 
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => setOpen(false)}
-                className="h-8 w-8 rounded-full text-primary-foreground hover:bg-black/15 hover:text-primary-foreground"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+              {/* Conteúdo por estágio */}
+              <div className="px-3 py-3">
+                <AnimatePresence mode="wait">
 
-            <div className="max-h-[65vh] overflow-y-auto px-4 py-2">
-              <Accordion type="single" collapsible className="w-full">
-                {faqItems.map((item) => (
-                  <AccordionItem key={item.id} value={item.id} className="border-border/80">
-                    <AccordionTrigger className="font-mono text-sm uppercase tracking-[0.04em] hover:no-underline">
-                      {item.question}
-                    </AccordionTrigger>
-                    <AccordionContent className="font-mono text-xs leading-6 text-muted-foreground">
-                      {item.answer}
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
+                  {/* ESTÁGIO 1: Saudação */}
+                  {stage === "greeting" && (
+                    <motion.div
+                      key="greeting"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <p className="font-mono text-sm text-foreground leading-relaxed mb-3">
+                        {saudacao}
+                      </p>
+                      <button
+                        onClick={() => setStage("topics")}
+                        className="w-full py-2 rounded border border-primary/40 bg-primary/10 text-primary font-mono text-xs uppercase tracking-wider hover:bg-primary/20 transition-colors"
+                      >
+                        Ver perguntas frequentes
+                      </button>
+                    </motion.div>
+                  )}
+
+                  {/* ESTÁGIO 2: Tópicos */}
+                  {stage === "topics" && (
+                    <motion.div
+                      key="topics"
+                      initial={{ opacity: 0, x: 8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.15 }}
+                      className="flex flex-col gap-1.5"
+                    >
+                      {faqItems.map((item, idx) => (
+                        <motion.button
+                          key={item.id}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.05 }}
+                          onClick={() => handleTopicClick(item.id)}
+                          className="text-left px-3 py-2 rounded border border-border hover:border-primary/50 hover:bg-primary/5 font-mono text-xs text-foreground transition-all"
+                        >
+                          {item.short}
+                        </motion.button>
+                      ))}
+                    </motion.div>
+                  )}
+
+                  {/* ESTÁGIO 3: Resposta */}
+                  {stage === "answer" && answer && (
+                    <motion.div
+                      key={`answer-${answer.id}`}
+                      initial={{ opacity: 0, x: 8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -8 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <p className="font-mono text-[11px] font-bold text-primary uppercase tracking-wider mb-2">
+                        {answer.short}
+                      </p>
+                      <p className="font-mono text-xs text-muted-foreground leading-[1.8] whitespace-pre-line">
+                        {answer.answer}
+                      </p>
+                      <button
+                        onClick={handleBack}
+                        className="mt-3 font-mono text-[11px] text-primary hover:underline"
+                      >
+                        ← outras perguntas
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Seta apontando para o personagem */}
+              <div className="absolute -bottom-[6px] right-35 w-3 h-3 rotate-45 border-r border-b border-border bg-card" />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* ── Personagem ── */}
       <div className="pointer-events-auto relative">
         <motion.button
           type="button"
-          onClick={() => setOpen((current) => !current)}
-          whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.96 }}
-          className="flex h-[18rem] w-[11rem] items-center justify-center overflow-hidden bg-transparent text-primary-foreground transition-transform sm:h-[22rem] sm:w-[14rem]"
-          aria-label={open ? "Fechar FAQ rapido" : "Abrir FAQ rapido"}
+          onClick={() => {
+            if (!visivel) { setVisivel(true); return }
+            if (stage === "greeting") setStage("topics")
+            else setStage("greeting")
+          }}
+          whileHover={{ scale: 1.03 }}
+          whileTap={{ scale: 0.97 }}
+          className="flex items-end justify-center overflow-hidden bg-transparent"
+          style={{ width: "15rem", height: "20rem" }}
+          aria-label={visivel ? "Fechar FAQ" : "Abrir FAQ"}
         >
           {!gifFailed ? (
             <img
               src={faqGifPath}
-              alt="FAQ rapido"
-              className="h-full w-full object-contain drop-shadow-[0_0_24px_rgba(255,20,40,0.35)]"
+              alt="Mascote FAQ"
+              className="h-full w-full object-contain drop-shadow-[0_0_16px_rgba(255,20,40,0.25)]"
               onError={() => setGifFailed(true)}
             />
           ) : (
-            <div className="flex h-[10rem] w-[10rem] items-center justify-center rounded-full bg-primary shadow-[0_0_24px_rgba(255,20,40,0.35)] sm:h-[12rem] sm:w-[12rem]">
-              <HelpCircle className="h-14 w-14" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg">
+              <span className="font-mono text-lg font-bold">?</span>
             </div>
           )}
         </motion.button>
 
+        {/* X para fechar permanentemente */}
         <button
           type="button"
-          onClick={() => setDismissed(true)}
-          className="absolute top-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-primary/60 bg-background/90 text-primary shadow-[0_0_16px_rgba(255,20,40,0.22)] transition-colors hover:bg-primary hover:text-primary-foreground"
-          aria-label="Fechar atalho da FAQ"
+          onClick={handleDismiss}
+          className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow transition-colors hover:bg-primary hover:text-primary-foreground hover:border-primary"
+          aria-label="Esconder mascote"
         >
-          <X className="h-4 w-4" />
+          <X className="h-3 w-3" />
         </button>
       </div>
     </div>

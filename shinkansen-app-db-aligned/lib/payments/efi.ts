@@ -1,5 +1,4 @@
 import "server-only"
-
 import fs from "node:fs"
 import https from "node:https"
 
@@ -66,7 +65,9 @@ type EfiPixWebhookResponse = {
   criacao?: string
 }
 
+
 let cachedPixToken: { value: string; expiresAt: number } | null = null
+let cachedPixAgent: https.Agent | null = null // ⬅️ Nova variável para cachear o agente TLS
 
 function getRequiredEnv(name: string) {
   const value = process.env[name]
@@ -114,10 +115,14 @@ function getPixAgent() {
   const { certificatePath, certificatePassphrase } = getEfiPixConfig()
   const certificate = fs.readFileSync(certificatePath)
 
-  return new https.Agent({
+  cachedPixAgent = new https.Agent({
     pfx: certificate,
     passphrase: certificatePassphrase,
+    keepAlive: true,       // Mantém a conexão mTLS aberta para os próximos requests rápidos
+    keepAliveMsecs: 60000, // Segura a conexão por 60 segundos
+    maxSockets: 100,
   })
+  return cachedPixAgent
 }
 
 function requestWithMtls<T>({
@@ -126,7 +131,7 @@ function requestWithMtls<T>({
   headers,
   body,
 }: {
-  method: "GET" | "POST" | "PUT"
+  method: "GET" | "POST" | "PUT" | "PATCH" 
   url: string
   headers?: Record<string, string>
   body?: string
@@ -141,6 +146,7 @@ function requestWithMtls<T>({
         path: `${requestUrl.pathname}${requestUrl.search}`,
         headers,
         agent: getPixAgent(),
+        timeout: 15000, // ⬅️ Limite de 15 segundos para evitar travamento eterno se a Efí cair
       },
       (res) => {
         let rawBody = ""
@@ -166,6 +172,12 @@ function requestWithMtls<T>({
         })
       },
     )
+
+    // Trata o estouro do tempo limite disparando um erro que libera o frontend
+    req.on("timeout", () => {
+      req.destroy()
+      reject(new Error("Timeout: A API da Efí Pix demorou muito para responder."))
+    })
 
     req.on("error", reject)
 
