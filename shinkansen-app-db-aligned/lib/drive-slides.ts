@@ -27,7 +27,7 @@ export async function obterSlides(): Promise<Slide[]> {
     const data = await import("../public/slides-data.json", {
       with: { type: "json" },
     })
-    const slides: Slide[] = data.default ?? []
+    const slides: Slide[] = (data.default ?? []) as Slide[]
     return slides.sort((a, b) => a.order - b.order)
   } catch {
     return []
