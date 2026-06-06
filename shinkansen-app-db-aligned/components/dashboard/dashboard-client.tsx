@@ -136,14 +136,14 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode; label
 }
 
 // Status fixos que sempre acontecem em todo filme
-const CORE_STATUS_STEPS = [
+const CORE_STATUS_STEPS: string[] = [
   "criado",
   "cadastrado",
   "revelando",
   "digitalizando",
   "edicao",
   "concluido"
-] as const;
+];
 
 // Mapeamento amigável para exibição
 const filmStatusDisplay: Record<string, string> = {
@@ -450,21 +450,19 @@ function OrderCard({
                     <h4 className="font-mono text-xs uppercase text-muted-foreground">Filmes</h4>
                     {order.films.map((film) => {
                       // 1. Monta os passos dinamicamente para este filme específico
-                      const stepsForThisFilm = [...CORE_STATUS_STEPS];
+                      const stepsForThisFilm: string[] = [...CORE_STATUS_STEPS];
 
-                      const needsSuporte = film.status === "suporte" || ["limpeza", "edicao", "concluido"].includes(film.status);
-                      if (needsSuporte) {
-                        const digitalizandoIdx = stepsForThisFilm.indexOf("digitalizando");
-                        stepsForThisFilm.splice(digitalizandoIdx + 1, 0, "suporte");
+                      // Suporte e limpeza só aparecem se o filme ESTÁ nesse status agora
+                      if (film.status === "suporte") {
+                        const idx = stepsForThisFilm.indexOf("digitalizando");
+                        if (idx !== -1) stepsForThisFilm.splice(idx + 1, 0, "suporte");
+                      }
+                      if (film.status === "limpeza") {
+                        const idx = stepsForThisFilm.indexOf("edicao");
+                        if (idx !== -1) stepsForThisFilm.splice(idx, 0, "limpeza");
                       }
 
-                      const needsLimpeza = film.status === "limpeza" || ["edicao", "concluido"].includes(film.status);
-                      if (needsLimpeza) {
-                        const edicaoIdx = stepsForThisFilm.indexOf("edicao");
-                        stepsForThisFilm.splice(edicaoIdx, 0, "limpeza");
-                      }
-
-                      const currentStepIndex = stepsForThisFilm.indexOf(film.status as any);
+                      const currentStepIndex = stepsForThisFilm.indexOf(film.status);
 
                       // 2. Monta as especificações e serviços na mesma linha de texto
                       const specParts: string[] = [];
