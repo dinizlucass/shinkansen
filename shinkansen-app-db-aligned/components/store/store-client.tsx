@@ -15,7 +15,6 @@ import AnimatedLogo from "@/components/animated-logo"
 import { GameMenuNav } from "@/components/game-menu-nav"
 import { StoreMobile } from "@/components/store/store-mobile"
 
-
 interface PerfilLoja { adress: string | null; cpf: string | null }
 interface StoreClientProps {
   user:               User | null
@@ -80,6 +79,60 @@ function brl(v: number) {
 // getValue: retorna 0.0–1.0 (quanto a barra enche)
 // height da barra: "height: 6" no motion.div — aumente para barras mais grossas
 // color: campo color de cada entrada
+// ── Badge de processo ────────────────────────────────────────────────
+
+const PROCESS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  c41:  { bg: "#f97316", color: "#fff",  label: "C41" },
+  ecn2: { bg: "#38bdf8", color: "#000",  label: "ECN2" },
+  e6:   { bg: "#38bdf8", color: "#000",  label: "E6" },
+  d76:  { bg: "#e8e8e8", color: "#111",  label: "D76" },
+  "p&b":{ bg: "#e8e8e8", color: "#111",  label: "P&B" },
+}
+
+function ProcessBadge({ process }: { process: string }) {
+  const p = PROCESS_BADGE[process.toLowerCase()]
+  if (!p) return null
+  return (
+    <span style={{
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: 12,
+      fontWeight: 700,
+      padding: "10px 8px",
+      borderRadius: 3,
+      background: p.bg,
+      color: p.color,
+      letterSpacing: "0.05em",
+      flexShrink: 0,
+      lineHeight: 1,
+    }}>
+      {p.label}
+    </span>
+  )
+}
+
+// ── Algoritmo de dificuldade ─────────────────────────────────────────
+
+function calcDificuldade(iso: number, isPB: boolean): { nivel: number; pct: number; estrelas: string } {
+  let diff: number
+  if (iso <= 12) {
+    diff = 4 + (12 - iso) / 12
+  } else if (iso <= 200) {
+    diff = 4 - (iso - 12) / (200 - 12)
+  } else if (iso <= 400) {
+    diff = 3 - (iso - 200) / (400 - 200)
+  } else {
+    diff = 2 - (iso - 400) / 400
+  }
+  if (isPB) diff -= 1
+  diff = Math.max(0.2, Math.min(5, diff))
+  const nivel = Math.max(1, Math.min(5, Math.round(diff)))
+  const pct   = Math.max(0.04, diff / 5)
+  const estrelas = ["★☆☆☆☆","★★☆☆☆","★★★☆☆","★★★★☆","★★★★★"][nivel - 1]
+  return { nivel, pct, estrelas }
+}
+
+// ── Barras de stats ──────────────────────────────────────────────────
+
 const STAT_BARS: Array<{
   label: string
   getValue: (p: Product) => number | null
@@ -99,48 +152,24 @@ const STAT_BARS: Array<{
     color: "#f5c400",
   },
   {
-    label: "FORMATO",
-    getValue: p => p.film_format === "120" ? 0.6 : p.film_format === "35mm" ? 1 : null,
-    getLabel: p => p.film_format ? p.film_format.toUpperCase() : "—",
-    color: "#3b82f6",
-  },
-  {
     label: "DIFICULDADE",
     getValue: p => {
-      if (p.category === "camera_recarregavel") return 1 / 5
+      if (p.category === "camera_recarregavel") return 0.2
       if (!["filme_35mm", "filme_120", "camera"].includes(p.category)) return null
-      let pontos = 0
+      if (!p.iso) return null
       const proc = (p.process ?? "").toUpperCase()
-      if (proc === "P&B" || proc.includes("D76")) pontos += 1
-      else if (proc !== "") pontos += 2
-      if (p.category === "filme_35mm") pontos += 1
-      else if (p.category === "filme_120") pontos += 2
-      if (p.iso && p.iso > 0) pontos += Math.max(0, 2.5 - Math.log2(p.iso) * 0.15)
-      else pontos += 2
-      if (p.exposures && p.exposures > 0) pontos -= Math.min(p.exposures / 36, 0.8)
-      return Math.max(0, Math.min(5, pontos)) / 5
+      const isPB = proc === "P&B" || proc.includes("D76")
+      return calcDificuldade(p.iso, isPB).pct
     },
     getLabel: p => {
       if (p.category === "camera_recarregavel") return "★☆☆☆☆"
       if (!["filme_35mm", "filme_120", "camera"].includes(p.category)) return "—"
-      let pontos = 0
+      if (!p.iso) return "—"
       const proc = (p.process ?? "").toUpperCase()
-      if (proc === "P&B" || proc.includes("D76")) pontos += 1
-      else if (proc !== "") pontos += 2
-      if (p.category === "filme_120") pontos += 1
-      if (p.iso && p.iso > 25) pontos += Math.max(0, 2.5 - Math.log2(p.iso) * 0.5)
-      else pontos += 2
-      if (p.exposures && p.exposures > 0) pontos -= Math.min(p.exposures / 36, 1)
-      const nivel = Math.max(1, Math.min(5, Math.round(Math.max(0, Math.min(5, pontos)))))
-      return ["★☆☆☆☆","★★☆☆☆","★★★☆☆","★★★★☆","★★★★★"][nivel - 1]
+      const isPB = proc === "P&B" || proc.includes("D76")
+      return calcDificuldade(p.iso, isPB).estrelas
     },
-    color: "#8b5cf6",
-  },
-  {
-    label: "PROCESSO",
-    getValue: p => p.process ? (p.process === "C41" ? 0.7 : p.process === "P&B" ? 0.9 : 0.5) : null,
-    getLabel: p => p.process ?? "—",
-    color: "#22c55e",
+    color: "#8a1176",
   },
 ]
 
@@ -172,7 +201,7 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
   const [logoFrame, setLogoFrame]     = React.useState(0)
 
   React.useEffect(() => {
-    const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 8000)
+    const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 2400)
     return () => clearInterval(id)
   }, [])
 
@@ -247,8 +276,11 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
                   {selecionado.brand && (
                     <div style={{ fontSize: 15, letterSpacing: "0.15em", color: "#e5271a", textTransform: "uppercase" }}>{selecionado.brand}</div>
                   )}
-                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", marginTop: 2 }}>{selecionado.name}</div>
-                  <div style={{ fontSize: 9, color: "var(--muted-foreground)", marginTop: 2 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", flex: 1 }}>{selecionado.name}</div>
+                    {selecionado.process && <ProcessBadge process={selecionado.process} />}
+                  </div>
+                  <div style={{ fontSize: 18, color: "var(--muted-foreground)", marginTop: 2 }}>
                     {CATEGORIA_LABEL[selecionado.category] ?? selecionado.category}
                     {selecionado.stock_quantity > 0 ? ` · ${selecionado.stock_quantity} em estoque` : " · ESGOTADO"}
                   </div>
@@ -265,7 +297,7 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
                         {isDificuldade && (
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <span style={{ fontSize: 15, color, letterSpacing: "0.1em", fontWeight: 700 }}>{label}</span>
-                            <span style={{ fontSize: 13, color: "var(--muted-foreground)" }}>{getLabel(selecionado)}</span>
+                            <span style={{ fontSize: 13, color }}>{getLabel(selecionado)}</span>
                           </div>
                         )}
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -320,47 +352,21 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
         </aside>
 
         {/* COL CENTRAL: GRADE */}
-        <main style={{ display: "flex", flexDirection: "column", overflow: "hidden", position: "relative"}}>
+        <main style={{ display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
           <DiagonalBg />
-         {selecionado && (
-            <div className="absolute bottom-[60px] left-0 right-0 z-0 grid pointer-events-none select-none place-items-center w-full px-4">
-              
-              {/* Camada 1: Sombra de fundo (Back) */}
-              <div 
-                className="col-start-1 row-start-1 font-bold text-center text-[#e5271a] opacity-40 whitespace-nowrap translate-x-[4px] translate-y-[20px] text-[3.5vw]"
-                style={{ fontFamily: "'Press Start 2P', monospace", letterSpacing: "0.2em" }}
-              >
-                {selecionado.name.toUpperCase()}
-              </div>
-
-              {/* Camada 2: Cor principal (Middle) */}
-              <div 
-                className="col-start-1 row-start-1 font-bold text-center text-[#0e3547] opacity-50 whitespace-nowrap translate-y-[10px] text-[3.5vw] "
-                style={{ fontFamily: "'Press Start 2P', monospace", letterSpacing: "0.25em" }}
-              >
-                {selecionado.name.toUpperCase()}
-              </div>
-
-              {/* Camada 3: Centro/Preenchimento escuro (Front) */}
-              <div 
-                className="col-start-1 row-start-1 font-bold text-center text-[#2c1111] opacity-70 whitespace-nowrap translate-y-[25px] text-[4vw]"
-                style={{ fontFamily: "'Press Start 2P', monospace", letterSpacing: "0.18em" }}
-              >
-                {selecionado.name.toUpperCase()}
-              </div>
-              <div 
-                className="col-start-1 row-start-1 font-bold text-center text-[#e5271a] whitespace-nowrap translate-y-[0px] text-[4vw]"
-                style={{ fontFamily: "'Michroma', monospace", letterSpacing: "0.18em" }}
-              >
-                {selecionado.name.toUpperCase()}
-              </div>
+          {selecionado && (
+            <div style={{ position: "absolute", bottom: 60, left: 0, right: 0, textAlign: "center", pointerEvents: "none", userSelect: "none", zIndex: 0 }}>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 72, fontWeight: 700, color: "#e5271a", opacity: 0.04, letterSpacing: 14, whiteSpace: "nowrap", transform: "translateX(6px) translateY(3px)" }}>{selecionado.name.toUpperCase()}</div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 72, fontWeight: 700, color: "#7fced5", opacity: 0.05, letterSpacing: 14, whiteSpace: "nowrap", transform: "translateX(-4px)", marginTop: -80 }}>{selecionado.name.toUpperCase()}</div>
+              <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 72, fontWeight: 700, color: "#e5271a", opacity: 0.18, letterSpacing: 14, whiteSpace: "nowrap", marginTop: -80 }}>{selecionado.name.toUpperCase()}</div>
             </div>
           )}
+
           <div style={{ padding: "20px 0 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0, zIndex: 1 }}>
             <motion.div key={logoFrame} initial={{ scale: 0.92, opacity: 0.6 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }}>
               <AnimatedLogo className="w-48 h-auto" />
             </motion.div>
-            
+            <InfinityTimer />
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: "8px 24px 24px", zIndex: 1 }}>
@@ -422,7 +428,7 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
                 )
               })}
             </div>
-            <div style={{ textAlign: "center", marginTop: 20, fontFamily: "monospace", fontSize:12, color: "white", letterSpacing: 3 }}>
+            <div style={{ textAlign: "center", marginTop: 20, fontFamily: "monospace", fontSize: 8, color: "var(--border)", letterSpacing: 3 }}>
               1° CLIQUE SELECIONA · 2° ADICIONA
             </div>
           </div>
@@ -457,13 +463,12 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
                     <img src={item.product.images.thumb} alt={item.product.name} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: "monospace", fontSize: 10, fontWeight: 700, color: "var(--foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.product.name}</div>
-                    <div style={{ fontFamily: "monospace", fontSize: 8, color: "var(--muted-foreground)", marginTop: 1 }}>
+                    <div style={{ fontFamily: "monospace", fontSize: 14, fontWeight: 700, color: "var(--foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.product.name}</div>
+                    <div style={{ fontFamily: "monospace", fontSize: 12, color: "var(--muted-foreground)", marginTop: 1 }}>
                       {CATEGORIA_LABEL[item.product.category]}
                       {item.product.iso ? ` · ISO${item.product.iso}` : ""}
-                      {item.product.film_format ? ` · ${item.product.film_format}` : ""}
                     </div>
-                    <div style={{ fontFamily: "monospace", fontSize: 10, color: "#e5271a", marginTop: 2 }}>
+                    <div style={{ fontFamily: "monospace", fontSize: 18, color: "#e5271a", marginTop: 2 }}>
                       {brl(item.product.price)}{item.quantity > 1 && ` × ${item.quantity}`}
                     </div>
                   </div>

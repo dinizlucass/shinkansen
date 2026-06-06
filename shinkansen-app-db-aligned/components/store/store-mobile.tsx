@@ -350,6 +350,73 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
 // SHEET DO PRODUTO — com swipe gestures
 // ─────────────────────────────────────────────────────────────────────
 
+const PROCESS_BADGE: Record<string, { bg: string; color: string; label: string }> = {
+  c41:  { bg: "#f97316", color: "#fff",  label: "C41" },
+  ecn2: { bg: "#38bdf8", color: "#000",  label: "ECN2" },
+  e6:   { bg: "#38bdf8", color: "#000",  label: "E6" },
+  d76:  { bg: "#e8e8e8", color: "#111",  label: "D76" },
+  "p&b":{ bg: "#e8e8e8", color: "#111",  label: "P&B" },
+}
+
+function ProcessBadge({ process }: { process: string }) {
+  const p = PROCESS_BADGE[process.toLowerCase()]
+  if (!p) return null
+  return (
+    <span style={{
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: 10,
+      fontWeight: 700,
+      padding: "10px 8px",
+      borderRadius: 3,
+      background: p.bg,
+      color: p.color,
+      letterSpacing: "0.05em",
+      flexShrink: 0,
+      lineHeight: 1,
+    }}>
+      {p.label}
+    </span>
+  )
+}
+
+function calcDificuldade(iso: number, isPB: boolean): { nivel: number; pct: number; estrelas: string } {
+  let diff: number
+  if (iso <= 12) {
+    diff = 4 + (12 - iso) / 12             // 6→4.5  12→4
+  } else if (iso <= 200) {
+    diff = 4 - (iso - 12) / (200 - 12)     // 12→4   200→3
+  } else if (iso <= 400) {
+    diff = 3 - (iso - 200) / (400 - 200)   // 200→3  400→2
+  } else {
+    diff = 2 - (iso - 400) / 400           // 400→2  800→1
+  }
+  if (isPB) diff -= 1
+  diff = Math.max(0.2, Math.min(5, diff))
+  const nivel = Math.max(1, Math.min(5, Math.round(diff)))
+  const pct   = Math.max(0.04, diff / 5)
+  const estrelas = ["★☆☆☆☆","★★☆☆☆","★★★☆☆","★★★★☆","★★★★★"][nivel - 1]
+  return { nivel, pct, estrelas }
+}
+
+function DificuldadeBar({ valor, estrelas }: { valor: number; estrelas: string }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <span style={{ fontSize: 14, color: "#a30808", letterSpacing: "0.1em", fontWeight: 700 }}>DIFICULDADE</span>
+        <span style={{ fontSize: 14, color: "#f5c400" }}>{estrelas}</span>
+      </div>
+      <div style={{ height: 6, background: "var(--muted)", borderRadius: 3, overflow: "hidden" }}>
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${valor * 100}%` }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          style={{ height: "100%", background: "#8a1176", borderRadius: 3, opacity: 0.85 }}
+        />
+      </div>
+    </div>
+  )
+}
+
 const IMAGES_ORDER = ["package", "sample", "thumb"] as const
 type ImageKey = typeof IMAGES_ORDER[number]
 
@@ -528,28 +595,42 @@ function SheetProduto({ product, cart, onClose, onAdd }: {
             )}
           </div>
 
-          {/* Marca + nome */}
+          {/* Marca + nome + badge processo */}
           <div style={{ marginBottom: 8 }}>
             {product.brand && (
               <div style={{ fontSize: 20, letterSpacing: "0.15em", color: "#e5271a", textTransform: "uppercase" }}>{product.brand}</div>
             )}
-            <div style={{ fontSize: 26, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase" }}>{product.name}</div>
-            <div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 2 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", flex: 1 }}>{product.name}</div>
+              {product.process && <ProcessBadge process={product.process} />}
+            </div>
+            <div style={{ fontSize: 16, color: "var(--muted-foreground)", marginTop: 4 }}>
               {CATEGORIA_LABEL[product.category] ?? product.category}
               {product.stock_quantity > 0 ? ` · ${product.stock_quantity} em estoque` : " · ESGOTADO"}
             </div>
           </div>
 
-          {/* Barras de stats */}
+          {/* Barra de dificuldade */}
+          {(() => {
+            if (!product.iso) return null
+            if (product.category === "camera_recarregavel") {
+              return <DificuldadeBar valor={0.2} estrelas="★☆☆☆☆" />
+            }
+            if (!["filme_35mm", "filme_120", "camera"].includes(product.category)) return null
+            const proc = (product.process ?? "").toUpperCase()
+            const isPB = proc === "P&B" || proc.includes("D76")
+            const { pct, estrelas } = calcDificuldade(product.iso, isPB)
+            return <DificuldadeBar valor={pct} estrelas={estrelas} />
+          })()}
+
+          {/* Barras ISO e POSES */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
             {[
-              { label: "ISO", val: product.iso ? Math.min(product.iso / 800, 1) : null, txt: product.iso ? String(product.iso) : "—", color: "#e5271a" },
-              { label: "POSES", val: product.exposures ? Math.min(product.exposures / 36, 1) : null, txt: product.exposures ? String(product.exposures) : "—", color: "#f5c400" },
-              { label: "FORMATO", val: product.film_format === "120" ? 0.6 : product.film_format === "35mm" ? 1 : null, txt: product.film_format?.toUpperCase() ?? "—", color: "#3b82f6" },
-              { label: "PROCESSO", val: product.process ? 0.7 : null, txt: product.process ?? "—", color: "#22c55e" },
+              { label: "ISO", val: product.iso ? Math.min(product.iso / 800, 1) : null, txt: product.iso ? String(product.iso) : null, color: "#e5271a" },
+              { label: "POSES", val: product.exposures ? Math.min(product.exposures / 36, 1) : null, txt: product.exposures ? String(product.exposures) : null, color: "#f5c400" },
             ].map(({ label, val, txt, color }) => val === null ? null : (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 12, color: "var(--muted-foreground)", width: 60, flexShrink: 0 }}>{label}</span>
+                <span style={{ fontSize: 12, color: "var(--muted-foreground)", width: 50, flexShrink: 0 }}>{label}</span>
                 <div style={{ flex: 1, height: 5, background: "var(--muted)", borderRadius: 2, overflow: "hidden" }}>
                   <motion.div initial={{ width: 0 }} animate={{ width: `${val * 100}%` }} transition={{ duration: 0.5, ease: "easeOut" }} style={{ height: "100%", background: color, borderRadius: 2, opacity: 0.85 }} />
                 </div>
