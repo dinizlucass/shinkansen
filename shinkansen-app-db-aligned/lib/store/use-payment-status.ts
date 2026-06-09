@@ -32,14 +32,10 @@ export function usePaymentStatus(orderId: string | null): PaymentState {
           filter: `id=eq.${orderId}`,
         },
         (payload) => {
-          const newStatus = payload.new?.payment_status
-          const orderStatus = payload.new?.status
+          const paymentStatus = payload.new?.payment_status
+          const orderStatus   = payload.new?.status
 
-          if (
-            newStatus === "CONCLUIDA" ||
-            newStatus === "pago" ||
-            orderStatus === "pago"
-          ) {
+          if (paymentStatus === "paid" || orderStatus === "pago") {
             setStatus("confirmado")
           }
         }
