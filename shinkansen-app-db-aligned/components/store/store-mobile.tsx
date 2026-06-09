@@ -14,6 +14,7 @@ import type { User } from "@supabase/supabase-js"
 import type { Product, DeliveryType } from "@/lib/store/types"
 import type { OpcaoFrete } from "@/lib/store/melhor-envio"
 import { useCart } from "@/lib/store/use-cart"
+import { usePaymentStatus } from "@/lib/store/use-payment-status"
 import { AnimatedTotal } from "@/components/store/animated-total"
 import { DiagonalBg } from "@/components/store/diagonal-bg"
 import AnimatedLogo from "@/components/animated-logo"
@@ -364,9 +365,9 @@ function ProcessBadge({ process }: { process: string }) {
   return (
     <span style={{
       fontFamily: "'Press Start 2P', monospace",
-      fontSize: 10,
+      fontSize: 8,
       fontWeight: 700,
-      padding: "10px 8px",
+      padding: "4px 8px",
       borderRadius: 3,
       background: p.bg,
       color: p.color,
@@ -402,7 +403,7 @@ function DificuldadeBar({ valor, estrelas }: { valor: number; estrelas: string }
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <span style={{ fontSize: 14, color: "#a30808", letterSpacing: "0.1em", fontWeight: 700 }}>DIFICULDADE</span>
+        <span style={{ fontSize: 14, color: "#f5c400", letterSpacing: "0.1em", fontWeight: 700 }}>DIFICULDADE</span>
         <span style={{ fontSize: 14, color: "#f5c400" }}>{estrelas}</span>
       </div>
       <div style={{ height: 6, background: "var(--muted)", borderRadius: 3, overflow: "hidden" }}>
@@ -410,7 +411,7 @@ function DificuldadeBar({ valor, estrelas }: { valor: number; estrelas: string }
           initial={{ width: 0 }}
           animate={{ width: `${valor * 100}%` }}
           transition={{ duration: 0.6, ease: "easeOut" }}
-          style={{ height: "100%", background: "#8a1176", borderRadius: 3, opacity: 0.85 }}
+          style={{ height: "100%", background: "#f5c400", borderRadius: 3, opacity: 0.85 }}
         />
       </div>
     </div>
@@ -705,6 +706,8 @@ function MobileCheckout({ cart, user, perfil, negativosPendentes, onClose, onSuc
   const [erro, setErro]               = React.useState("")
   const [pixGerado, setPixGerado]     = React.useState<{ copia_cola: string; qr_base64: string; valor: number } | null>(null)
   const [pendingOrderId, setPendingOrderId] = React.useState<string | null>(null)
+  const [orderId, setOrderId]         = React.useState<string | null>(null)
+  const paymentStatus = usePaymentStatus(orderId)
 
   async function retryPix() {
     if (!pendingOrderId) return
@@ -764,6 +767,7 @@ function MobileCheckout({ cart, user, perfil, negativosPendentes, onClose, onSuc
       const res  = await fetch("/api/store/create-order", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ items: cart.items.map(i => ({ product_id: i.product.id, quantity: i.quantity, unit_price: i.product.price })), delivery_type: entrega, shipping_address: precisaEnvio ? endereco.trim() : null, cpf: precisaEnvio ? cpf.replace(/\D/g,"") : null, cep: precisaEnvio ? cep.replace(/\D/g,"") : null, shipping_option: freteSelecionado, coupon_code: cupomAplicado?.code ?? null, salvar_perfil: precisaEnvio && salvarPerfil, incluir_negativos: precisaEnvio && incluirNegativos }) })
       const data = await res.json()
       if (!data.ok) { setErro(data.error ?? "Erro ao criar pedido"); return }
+      setOrderId(data.order.id)
       const pixRes  = await fetch("/api/store/payment/create-pix", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ order_id: data.order.id }) })
       const pixData = await pixRes.json()
       if (pixData.ok) setPixGerado(pixData.pix)
@@ -794,6 +798,16 @@ function MobileCheckout({ cart, user, perfil, negativosPendentes, onClose, onSuc
 
         <div style={{ flex:1, overflowY:"auto", padding:16, display:"flex", flexDirection:"column", gap:14 }}>
           {pixGerado ? (
+            paymentStatus === "confirmado" ? (
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16, textAlign:"center", padding:"20px 0" }}>
+                <div style={{ width:64, height:64, borderRadius:32, background:"rgba(34,197,94,0.15)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                  <span style={{ fontSize:32 }}>✓</span>
+                </div>
+                <p style={{ fontFamily:"'Press Start 2P', monospace", fontSize:12, color:"#22c55e" }}>PAGAMENTO CONFIRMADO</p>
+                <p style={{ fontFamily:"monospace", fontSize:12, color:"var(--muted-foreground)" }}>Seu pedido foi pago com sucesso!</p>
+                <button onClick={onSuccess} style={{ width:"100%", padding:14, background:"#22c55e", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
+              </div>
+            ) : (
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, textAlign:"center" }}>
               <p style={{ fontFamily:"monospace", fontSize:12 }}>Pedido criado! Pague com Pix.</p>
               <div style={{ background:"#fff", padding:10, borderRadius:8 }}>
@@ -804,8 +818,10 @@ function MobileCheckout({ cart, user, perfil, negativosPendentes, onClose, onSuc
                 <input readOnly value={pixGerado.copia_cola} style={{ ...inputStyle, fontSize:10 }} onFocus={e => e.target.select()} />
                 <CopyButton text={pixGerado.copia_cola} />
               </div>
+              <p style={{ fontFamily:"monospace", fontSize:10, color:"var(--muted-foreground)" }}>Aguardando confirmação do pagamento...</p>
               <button onClick={onSuccess} style={{ width:"100%", padding:14, background:"#e5271a", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
             </div>
+            )
           ) : (
             <>
               <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
