@@ -34,7 +34,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
   camera_recarregavel: "CÂMERA", acessorio: "ACESSÓRIO", outro: "OUTRO",
 }
 const ENTREGA_LABEL: Record<DeliveryType, string> = {
-  envio: "Envio pelos Correios", retirada: "Retirada no Lab",
+  envio: "Envio pelos Correios", retirada: "Retirada",
 }
 function brl(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })

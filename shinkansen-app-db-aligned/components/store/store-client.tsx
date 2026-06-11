@@ -67,7 +67,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
 // Duas opções apenas
 const ENTREGA_LABEL: Record<DeliveryType, string> = {
   envio:    "Envio pelos Correios",
-  retirada: "Retirada no Lab",
+  retirada: "Retirada",
 }
 
 function brl(v: number) {

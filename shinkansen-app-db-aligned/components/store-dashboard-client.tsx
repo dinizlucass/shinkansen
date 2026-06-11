@@ -100,6 +100,11 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode; label
     icon: <Wallet className="h-4 w-4" />,
     label: "Pago",
   },
+  embalado: {
+    color: "bg-purple-500/15 text-purple-700 border-purple-500/40",
+    icon: <Package className="h-4 w-4" />,
+    label: "Embalado",
+  },
   enviado: {
     color: "bg-blue-500/15 text-blue-700 border-blue-500/40",
     icon: <Truck className="h-4 w-4" />,
@@ -117,20 +122,27 @@ const statusConfig: Record<string, { color: string; icon: React.ReactNode; label
   },
 }
 
-// Etapas visuais do pedido da loja
-const STORE_STEPS = ["pendente", "pago", "enviado", "entregue"] as const
+// Etapas visuais do pedido da loja — variam por tipo de entrega
+const STORE_STEPS_ENVIO:    string[] = ["pendente", "pago", "enviado", "entregue"]
+const STORE_STEPS_RETIRADA: string[] = ["pendente", "pago", "embalado", "entregue"]
+
+function getStoreSteps(deliveryType: string): string[] {
+  return deliveryType === "retirada" ? STORE_STEPS_RETIRADA : STORE_STEPS_ENVIO
+}
 
 const storeStatusDisplay: Record<string, string> = {
-  pendente: "Pagamento",
-  pago:     "Pago",
-  enviado:  "Enviado",
-  entregue: "Entregue",
+  pendente:  "Pagamento",
+  pago:      "Pago",
+  embalado:  "Embalado",
+  enviado:   "Enviado",
+  entregue:  "Entregue",
 }
 
 const DELIVERY_LABEL: Record<string, string> = {
   correios:       "Correios",
   transportadora: "Transportadora",
-  retirada:       "Retirada no Lab",
+  envio:          "Envio pelos Correios",
+  retirada:       "Retirada",
 }
 
 const CATEGORIA_LABEL: Record<string, string> = {
@@ -261,7 +273,8 @@ function StoreOrderCard({
   compact?: boolean
 }) {
   const status = statusConfig[order.status] ?? statusConfig.pendente
-  const currentStepIndex = STORE_STEPS.indexOf(order.status as any)
+  const storeSteps = getStoreSteps(order.delivery_type)
+  const currentStepIndex = storeSteps.indexOf(order.status)
   const totalItens = order.items.reduce((s, i) => s + i.quantity, 0)
 
   return (
@@ -315,7 +328,7 @@ function StoreOrderCard({
                 {order.status !== "cancelado" && (
                   <div className="mb-6">
                     <div className="relative flex justify-between items-center w-full before:content-[''] before:absolute before:left-0 before:right-0 before:top-[10px] before:h-[2px] before:bg-border before:z-0">
-                      {STORE_STEPS.map((step, idx) => {
+                      {storeSteps.map((step, idx) => {
                         const isCompleted = idx < currentStepIndex
                         const isCurrent = idx === currentStepIndex
                         let dotColor = "bg-muted border-muted-foreground/30"
