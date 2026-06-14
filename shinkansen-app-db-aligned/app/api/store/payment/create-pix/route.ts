@@ -10,15 +10,15 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createClient }              from "@/lib/supabase/server"
+import { createAdminClient }         from "@/lib/supabase/admin"
 import { createEfiPixCharge, getEfiPixConfig } from "@/lib/payments/efi"
 
-// Erros que valem retry (lado do gateway, não do cliente)
 function isRetryable(e: any): boolean {
   const msg = String(e?.message ?? "")
   return (
-    msg.includes("504") ||  // Gateway Timeout
-    msg.includes("502") ||  // Bad Gateway
-    msg.includes("503") ||  // Service Unavailable
+    msg.includes("504") ||
+    msg.includes("502") ||
+    msg.includes("503") ||
     msg.includes("ECONNRESET") ||
     msg.includes("ETIMEDOUT") ||
     msg.includes("socket hang up")
@@ -34,13 +34,13 @@ async function createChargeWithRetry(params: Parameters<typeof createEfiPixCharg
   for (let attempt = 0; attempt < maxTries; attempt++) {
     try {
       if (attempt > 0) {
-        await sleep(attempt * 1000)  // 1s, 2s
+        await sleep(attempt * 1000)
         console.log(`[create-pix] retry ${attempt}/${maxTries - 1}`)
       }
       return await createEfiPixCharge(params)
     } catch (e: any) {
       lastError = e
-      if (!isRetryable(e)) throw e  // erro do cliente — não retry
+      if (!isRetryable(e)) throw e
     }
   }
   throw lastError
@@ -48,6 +48,7 @@ async function createChargeWithRetry(params: Parameters<typeof createEfiPixCharg
 
 export async function POST(req: NextRequest) {
   try {
+    // ── Auth: client do usuário (RLS) para validar identidade ──
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "order_id obrigatorio." }, { status: 400 })
     }
 
+    // ── Leitura: client do usuário (RLS valida propriedade) ──
     const { data: order, error } = await supabase
       .from("store_orders")
       .select("id, client_id, total_value, status, payment_status, payment_charge_id")
@@ -71,10 +73,11 @@ export async function POST(req: NextRequest) {
     if (order.client_id !== user.id) {
       return NextResponse.json({ ok: false, error: "Nao autorizado." }, { status: 403 })
     }
-    if (["pago", "CONCLUIDA"].includes(order.payment_status ?? "")) {
+    if (["pago", "paid", "CONCLUIDA"].includes(order.payment_status ?? "")) {
       return NextResponse.json({ ok: false, error: "Pedido ja foi pago." }, { status: 400 })
     }
 
+    // ── Gera cobrança Pix na Efí ──
     const { pixKey } = getEfiPixConfig()
 
     let cobranca
@@ -86,7 +89,6 @@ export async function POST(req: NextRequest) {
       })
     } catch (e: any) {
       console.error("[create-pix]", e)
-      // Mensagem amigável para o cliente
       const isTimeout = String(e.message).includes("504") || String(e.message).includes("Timeout")
       return NextResponse.json({
         ok:    false,
@@ -101,12 +103,14 @@ export async function POST(req: NextRequest) {
       ? new Date(Date.now() + cobranca.expiresInSeconds * 1000).toISOString()
       : null
 
-    await supabase
+    // ── Escrita: admin client (bypassa RLS) ──
+    const admin = createAdminClient()
+    const { error: updateErr } = await admin
       .from("store_orders")
       .update({
         payment_provider:        "efi",
         payment_method:          "pix",
-        payment_status:          cobranca.status,
+        payment_status:          "pending",
         payment_charge_id:       cobranca.txid,
         payment_custom_id:       String(cobranca.locationId ?? ""),
         payment_link_url:        cobranca.paymentLinkUrl,
@@ -115,6 +119,10 @@ export async function POST(req: NextRequest) {
         payment_last_payload:    cobranca.raw,
       })
       .eq("id", order.id)
+
+    if (updateErr) {
+      console.error("[create-pix] Falha ao salvar cobrança no banco:", updateErr)
+    }
 
     return NextResponse.json({
       ok:  true,

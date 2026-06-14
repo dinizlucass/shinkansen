@@ -223,7 +223,7 @@ export function FloatingFaq() {
               </div>
 
               {/* Seta apontando para o personagem */}
-              <div className="absolute -bottom-[6px] right-35 w-3 h-3 rotate-45 border-r border-b border-border bg-card" />
+              <div className="absolute -bottom-[6px] right-22 w-3 h-3 rotate-45 border-r border-b border-border bg-card" />
             </div>
           </motion.div>
         )}
@@ -241,7 +241,7 @@ export function FloatingFaq() {
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           className="flex items-end justify-center overflow-hidden bg-transparent"
-          style={{ width: "15rem", height: "20rem" }}
+          style={{ width: "10rem", height: "20rem" }}
           aria-label={visivel ? "Fechar FAQ" : "Abrir FAQ"}
         >
           {!gifFailed ? (
@@ -262,7 +262,7 @@ export function FloatingFaq() {
         <button
           type="button"
           onClick={handleDismiss}
-          className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow transition-colors hover:bg-primary hover:text-primary-foreground hover:border-primary"
+          className="absolute top-0 right-0 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-background/90 text-muted-foreground shadow transition-colors hover:bg-primary hover:text-primary-foreground hover:border-primary"
           aria-label="Esconder mascote"
         >
           <X className="h-3 w-3" />
