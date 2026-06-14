@@ -202,7 +202,7 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
   const [logoFrame, setLogoFrame]     = React.useState(0)
 
   React.useEffect(() => {
-    const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 2400)
+    const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 8400)
     return () => clearInterval(id)
   }, [])
 
@@ -281,7 +281,7 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
                     <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", flex: 1 }}>{selecionado.name}</div>
                     {selecionado.process && <ProcessBadge process={selecionado.process} />}
                   </div>
-                  <div style={{ fontSize: 9, color: "var(--muted-foreground)", marginTop: 2 }}>
+                  <div style={{ fontSize: 15, color: "var(--muted-foreground)", marginTop: 2 }}>
                     {CATEGORIA_LABEL[selecionado.category] ?? selecionado.category}
                     {selecionado.stock_quantity > 0 ? ` · ${selecionado.stock_quantity} em estoque` : " · ESGOTADO"}
                   </div>
