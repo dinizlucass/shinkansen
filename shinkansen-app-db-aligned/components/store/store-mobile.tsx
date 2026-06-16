@@ -514,6 +514,10 @@ function SheetProduto({ product, cart, onClose, onAdd }: {
 
   const LABEL: Record<string, string> = { package: "EMBAL.", sample: "EXEMPLO", thumb: "THUMB" }
 
+  function isVideo(src: string) {
+    return /\.(mp4|webm|mov)(\?|$)/i.test(src)
+  }
+
   return (
     <>
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -543,15 +547,47 @@ function SheetProduto({ product, cart, onClose, onAdd }: {
             style={{ aspectRatio: "4/3", borderRadius: 8, overflow: "hidden", background: "#0d0d0d", marginBottom: 12, position: "relative", touchAction: zoomed ? "none" : "pan-y" }}
           >
             <AnimatePresence mode="wait">
+              {isVideo(imgs[imgIdx].src) ? (
+                <motion.div
+                  key={imgs[imgIdx].src}
+                  initial={{ opacity: 0, x: 8, filter: "saturate(3) hue-rotate(90deg) brightness(1.5)" }}
+                  animate={{
+                    opacity: [0, 1, 0.7, 1, 0.85, 1],
+                    x: [8, -3, 2, -1, 0],
+                    filter: [
+                      "saturate(3) hue-rotate(90deg) brightness(1.5)",
+                      "saturate(2) hue-rotate(-60deg) brightness(1.2)",
+                      "saturate(1.5) hue-rotate(30deg) brightness(1.1)",
+                      "saturate(1) hue-rotate(0deg) brightness(1)",
+                    ],
+                  }}
+                  exit={{ opacity: 0, x: -6, filter: "saturate(3) hue-rotate(-90deg) brightness(1.5)" }}
+                  transition={{ duration: 0.3, times: [0, 0.15, 0.3, 0.5, 0.7, 1] }}
+                  style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
+                >
+                  <video autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}>
+                    <source src={imgs[imgIdx].src} type={imgs[imgIdx].src.endsWith(".webm") ? "video/webm" : "video/mp4"} />
+                  </video>
+                </motion.div>
+              ) : (
               <motion.img
                 key={imgs[imgIdx].src}
                 src={imgs[imgIdx].src}
                 alt={product.name}
                 draggable={false}
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.2 }}
+                initial={{ opacity: 0, x: 8, filter: "saturate(3) hue-rotate(90deg) brightness(1.5)" }}
+                animate={{
+                  opacity: [0, 1, 0.7, 1, 0.85, 1],
+                  x: [8, -3, 2, -1, 0],
+                  filter: [
+                    "saturate(3) hue-rotate(90deg) brightness(1.5)",
+                    "saturate(2) hue-rotate(-60deg) brightness(1.2)",
+                    "saturate(1.5) hue-rotate(30deg) brightness(1.1)",
+                    "saturate(1) hue-rotate(0deg) brightness(1)",
+                  ],
+                }}
+                exit={{ opacity: 0, x: -6, filter: "saturate(3) hue-rotate(-90deg) brightness(1.5)" }}
+                transition={{ duration: 0.3, times: [0, 0.15, 0.3, 0.5, 0.7, 1] }}
                 style={{
                   width: "100%", height: "100%", objectFit: "cover", display: "block",
                   transform: zoomed ? `scale(2.5)` : "scale(1)",
@@ -559,6 +595,7 @@ function SheetProduto({ product, cart, onClose, onAdd }: {
                   transition: "transform 0.25s ease-out, transform-origin 0.25s ease-out",
                 }}
               />
+              )}
             </AnimatePresence>
 
             {/* Dots indicadores (escondem quando zoom ativo) */}

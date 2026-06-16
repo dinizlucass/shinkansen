@@ -202,7 +202,7 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
   const [logoFrame, setLogoFrame]     = React.useState(0)
 
   React.useEffect(() => {
-    const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 8400)
+    const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 2400)
     return () => clearInterval(id)
   }, [])
 
@@ -281,7 +281,7 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
                     <div style={{ fontSize: 15, fontWeight: 700, color: "var(--foreground)", textTransform: "uppercase", flex: 1 }}>{selecionado.name}</div>
                     {selecionado.process && <ProcessBadge process={selecionado.process} />}
                   </div>
-                  <div style={{ fontSize: 15, color: "var(--muted-foreground)", marginTop: 2 }}>
+                  <div style={{ fontSize: 9, color: "var(--muted-foreground)", marginTop: 2 }}>
                     {CATEGORIA_LABEL[selecionado.category] ?? selecionado.category}
                     {selecionado.stock_quantity > 0 ? ` · ${selecionado.stock_quantity} em estoque` : " · ESGOTADO"}
                   </div>
@@ -518,19 +518,64 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
 // SUBCOMPONENTES
 // ─────────────────────────────────────────────────────────────────────
 
+function isVideo(src: string) {
+  return /\.(mp4|webm|mov)(\?|$)/i.test(src)
+}
+
 function FichaImagem({ product }: { product: Product }) {
-  const [aba, setAba] = React.useState<"package" | "sample">("package")
+  const abas = React.useMemo(() => {
+    const list: { key: string; label: string; src: string }[] = []
+    if (product.images.package) list.push({ key: "package", label: "EMBAL.", src: product.images.package })
+    if (product.images.sample)  list.push({ key: "sample",  label: "EXEMPLO", src: product.images.sample })
+    if (product.images.thumb)   list.push({ key: "thumb",   label: "THUMB",   src: product.images.thumb })
+    return list.length ? list : [{ key: "thumb", label: "THUMB", src: product.images.thumb || "" }]
+  }, [product])
+
+  const [idx, setIdx] = React.useState(0)
+  React.useEffect(() => setIdx(0), [product.id])
+
+  const current = abas[idx]
+  const video = isVideo(current.src)
+
   return (
     <>
-      <img src={aba === "package" ? product.images.package : product.images.sample} alt={product.name} draggable={false}
-        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-      <div style={{ position: "absolute", bottom: 6, left: 6, display: "flex", gap: 4 }}>
-        {(["package", "sample"] as const).map(v => (
-          <button key={v} onClick={() => setAba(v)} style={{ fontFamily: "monospace", fontSize: 7, padding: "2px 6px", borderRadius: 2, background: aba === v ? "#e5271a" : "rgba(0,0,0,0.7)", color: aba === v ? "#fff" : "#888", border: "none", cursor: "pointer", textTransform: "uppercase" }}>
-            {v === "package" ? "EMBAL." : "EXEMPLO"}
-          </button>
-        ))}
-      </div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={current.key + product.id}
+          initial={{ opacity: 0, x: 6, filter: "saturate(3) hue-rotate(90deg) brightness(1.5)" }}
+          animate={{
+            opacity: [0, 1, 0.7, 1, 0.85, 1],
+            x: [6, -2, 1, -1, 0],
+            filter: [
+              "saturate(3) hue-rotate(90deg) brightness(1.5)",
+              "saturate(2) hue-rotate(-60deg) brightness(1.2)",
+              "saturate(1.5) hue-rotate(30deg) brightness(1.1)",
+              "saturate(1) hue-rotate(0deg) brightness(1)",
+            ],
+          }}
+          exit={{ opacity: 0, x: -4, filter: "saturate(3) hue-rotate(-90deg) brightness(1.5)" }}
+          transition={{ duration: 0.3, times: [0, 0.15, 0.3, 0.5, 0.7, 1] }}
+          style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
+        >
+          {video ? (
+            <video autoPlay loop muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}>
+              <source src={current.src} type={current.src.endsWith(".webm") ? "video/webm" : "video/mp4"} />
+            </video>
+          ) : (
+            <img src={current.src} alt={product.name} draggable={false}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          )}
+        </motion.div>
+      </AnimatePresence>
+      {abas.length > 1 && (
+        <div style={{ position: "absolute", bottom: 6, left: 6, display: "flex", gap: 4, zIndex: 2 }}>
+          {abas.map((a, i) => (
+            <button key={a.key} onClick={() => setIdx(i)} style={{ fontFamily: "monospace", fontSize: 7, padding: "2px 6px", borderRadius: 2, background: idx === i ? "#e5271a" : "rgba(0,0,0,0.7)", color: idx === i ? "#fff" : "#888", border: "none", cursor: "pointer", textTransform: "uppercase" }}>
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
     </>
   )
 }
