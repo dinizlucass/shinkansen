@@ -2,8 +2,7 @@
  * app/api/store/validate-coupon/route.ts
  *
  * Valida um cupom antes de aplicar no checkout.
- * A validação definitiva acontece no trigger do banco ao criar o pedido,
- * mas validamos aqui para dar feedback imediato ao usuário.
+ * Checa: ativo, expirado, usos globais, uso por cliente.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -21,9 +20,17 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient()
+
+    // Identifica o usuário
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "Faça login para usar cupons." }, { status: 401 })
+    }
+
+    // Busca cupom
     const { data: coupon, error } = await supabase
       .from("coupons")
-      .select("id, code, discount, min_order, max_uses, uses_count, active, expires_at")
+      .select("id, code, discount, min_order, max_uses, uses_count, active, one_per_client, expires_at")
       .eq("code", code)
       .single()
 
@@ -48,6 +55,20 @@ export async function POST(req: NextRequest) {
         ok: false,
         error: `Valor mínimo de ${coupon.min_order.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} para este cupom.`,
       })
+    }
+
+    // Verifica uso por cliente (se habilitado)
+    if (coupon.one_per_client) {
+      const { count } = await supabase
+        .from("store_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", user.id)
+        .eq("coupon_id", coupon.id)
+        .neq("status", "cancelado")
+
+      if (count && count > 0) {
+        return NextResponse.json({ ok: false, error: "Você já usou este cupom." })
+      }
     }
 
     return NextResponse.json({
