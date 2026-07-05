@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { z } from "zod"
 
 import { sendOrderStatusEmail } from "@/lib/email/order-status"
 import { getProfileDefaults } from "@/lib/profile-bootstrap"
@@ -84,10 +85,10 @@ function composeFilmNotes(
 }
 
 export async function POST(req: Request) {
-  const supabase = await createClient()
-  const admin = createAdminClient()
-
   try {
+    const supabase = await createClient()
+    const admin = createAdminClient()
+
     const body = await req.json().catch(() => null)
     const parsed = createOrderSchema.safeParse(body)
 
@@ -101,29 +102,92 @@ export async function POST(req: Request) {
     const input = parsed.data
     const {
       data: { user },
-      error: authError,
     } = await supabase.auth.getUser()
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { ok: false, error: { message: "Voce precisa estar logado para criar um pedido." } },
-        { status: 401 }
-      )
-    }
+    let clientId: string
+    let clientEmail: string | null
+    let clientFullName: string | null
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("full_name, phone")
-      .eq("id", user.id)
-      .single()
+    if (user) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name, phone")
+        .eq("id", user.id)
+        .single()
 
-    const hydratedProfile = getProfileDefaults(user, profileError ? null : profile)
+      const hydratedProfile = getProfileDefaults(user, profileError ? null : profile)
 
-    if (!isProfileComplete(hydratedProfile)) {
-      return NextResponse.json(
-        { ok: false, error: { message: "Complete seu perfil com nome e telefone antes de criar um pedido." } },
-        { status: 403 }
-      )
+      if (!isProfileComplete(hydratedProfile)) {
+        return NextResponse.json(
+          { ok: false, error: { message: "Complete seu perfil com nome e telefone antes de criar um pedido." } },
+          { status: 403 }
+        )
+      }
+
+      clientId = user.id
+      clientEmail = user.email ?? null
+      clientFullName = hydratedProfile.full_name ?? null
+    } else {
+      // Cadastro embutido: cria a conta junto com o pedido (sem exigir login prévio).
+      const accountSchema = z.object({
+        email: z.string().email(),
+        password: z.string().min(6),
+        full_name: z.string().trim().min(1),
+        phone: z.string().trim().min(8),
+      })
+      const accParsed = accountSchema.safeParse((body as { account?: unknown } | null)?.account)
+      if (!accParsed.success) {
+        return NextResponse.json(
+          { ok: false, error: { message: "Para pedir sem login, informe nome, telefone, e-mail e senha (mín. 6)." } },
+          { status: 400 }
+        )
+      }
+      const acc = accParsed.data
+
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
+        email: acc.email,
+        password: acc.password,
+        email_confirm: true,
+        user_metadata: { full_name: acc.full_name },
+      })
+
+      if (createErr || !created?.user) {
+        console.error("[/api/orders] createUser falhou:", createErr)
+        const rawMsg = createErr?.message ?? ""
+        const jaExiste =
+          rawMsg.toLowerCase().includes("already") ||
+          rawMsg.toLowerCase().includes("registered") ||
+          (createErr as { code?: string } | null)?.code === "email_exists"
+        const detalhe =
+          rawMsg && rawMsg !== "{}"
+            ? rawMsg
+            : `status=${(createErr as { status?: number } | null)?.status ?? "?"} code=${
+                (createErr as { code?: string } | null)?.code ?? "?"
+              } name=${(createErr as { name?: string } | null)?.name ?? "?"}`
+        return NextResponse.json(
+          {
+            ok: false,
+            error: {
+              message: jaExiste
+                ? "Este e-mail já tem conta. Faça login para continuar."
+                : `Não foi possível criar a conta (${detalhe}).`,
+            },
+          },
+          { status: jaExiste ? 409 : 400 }
+        )
+      }
+
+      clientId = created.user.id
+      clientEmail = acc.email
+      clientFullName = acc.full_name
+
+      // Garante o profile completo (nome + telefone) para o novo usuário.
+      await admin
+        .from("profiles")
+        .upsert(
+          { id: clientId, email: acc.email, full_name: acc.full_name, phone: acc.phone },
+          { onConflict: "id" }
+        )
     }
 
     const { data: servicesData, error: servicesError } = await supabase
@@ -206,7 +270,7 @@ export async function POST(req: Request) {
     }, 0)
 
     const orderInsert = orderInsertSchema.parse({
-      client_id: user.id,
+      client_id: clientId,
       status: "criado",
       total_value: totalValue,
       discount: 0,
@@ -278,11 +342,11 @@ export async function POST(req: Request) {
       }
     }
 
-    if (user.email && process.env.RESEND_API_KEY) {
+    if (clientEmail && process.env.RESEND_API_KEY) {
       try {
         await sendOrderStatusEmail({
-          to: user.email,
-          customerName: hydratedProfile.full_name ?? null,
+          to: clientEmail,
+          customerName: clientFullName,
           orderId: order.id,
           status: "criado",
           totalValue,
@@ -294,6 +358,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, orderId: order.id }, { status: 201 })
   } catch (error) {
+    console.error("[/api/orders] erro:", error)
     const message = error instanceof Error ? error.message : "Erro desconhecido."
     return NextResponse.json({ ok: false, error: { message } }, { status: 500 })
   }

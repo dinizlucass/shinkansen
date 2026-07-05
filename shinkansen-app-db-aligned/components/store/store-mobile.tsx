@@ -9,10 +9,13 @@
 import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, ShoppingBag, Loader2, Check, Tag } from "lucide-react"
+import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 
 import type { Product, DeliveryType } from "@/lib/store/types"
 import type { OpcaoFrete } from "@/lib/store/melhor-envio"
+import { PontosRetirada } from "@/components/store/pontos-retirada"
+import { ULTIMO_PEDIDO_KEY } from "@/lib/store/paradas"
 import { useCart } from "@/lib/store/use-cart"
 import { usePaymentStatus } from "@/lib/store/use-payment-status"
 import { AnimatedTotal } from "@/components/store/animated-total"
@@ -69,6 +72,7 @@ function CopyButton({ text }: { text: string }) {
 
 export function StoreMobile({ user, products, perfil, negativosPendentes }: StoreMobileProps) {
   const cart = useCart()
+  const router = useRouter()
 
   const [selecionado, setSelecionado]     = React.useState<Product | null>(null)
   const [selecionadoId, setSelId]         = React.useState<string | null>(null)
@@ -339,7 +343,7 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
             cart={cart} user={user} perfil={perfil}
             negativosPendentes={negativosPendentes}
             onClose={() => setCheckout(false)}
-            onSuccess={() => { cart.limpar(); setCheckout(false) }}
+            onSuccess={() => { cart.limpar(); setCheckout(false); router.push("/proxima-parada") }}
           />
         )}
       </AnimatePresence>
@@ -757,6 +761,20 @@ function MobileCheckout({ cart, user, perfil, negativosPendentes, onClose, onSuc
     } catch { setErro("Erro de conexao.") } finally { setEnviando(false) }
   }
 
+  function stashPedido() {
+    try {
+      sessionStorage.setItem(
+        ULTIMO_PEDIDO_KEY,
+        JSON.stringify({
+          id: orderId ?? "",
+          itens: cart.items.map((i) => `${i.quantity}× ${i.product.name}`),
+        }),
+      )
+    } catch {
+      /* ignora */
+    }
+  }
+
   const precisaEnvio = entrega === "envio"
   const desconto     = cupomAplicado?.discount ?? 0
   const valorFrete   = precisaEnvio ? (freteSelecionado?.preco ?? 0) : 0
@@ -842,7 +860,7 @@ function MobileCheckout({ cart, user, perfil, negativosPendentes, onClose, onSuc
                 </div>
                 <p style={{ fontFamily:"'Press Start 2P', monospace", fontSize:12, color:"#22c55e" }}>PAGAMENTO CONFIRMADO</p>
                 <p style={{ fontFamily:"monospace", fontSize:12, color:"var(--muted-foreground)" }}>Seu pedido foi pago com sucesso!</p>
-                <button onClick={onSuccess} style={{ width:"100%", padding:14, background:"#22c55e", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
+                <button onClick={() => { stashPedido(); onSuccess() }} style={{ width:"100%", padding:14, background:"#22c55e", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
               </div>
             ) : (
             <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14, textAlign:"center" }}>
@@ -856,7 +874,7 @@ function MobileCheckout({ cart, user, perfil, negativosPendentes, onClose, onSuc
                 <CopyButton text={pixGerado.copia_cola} />
               </div>
               <p style={{ fontFamily:"monospace", fontSize:10, color:"var(--muted-foreground)" }}>Aguardando confirmação do pagamento...</p>
-              <button onClick={onSuccess} style={{ width:"100%", padding:14, background:"#e5271a", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
+              <button onClick={() => { stashPedido(); onSuccess() }} style={{ width:"100%", padding:14, background:"#e5271a", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
             </div>
             )
           ) : (
@@ -880,6 +898,8 @@ function MobileCheckout({ cart, user, perfil, negativosPendentes, onClose, onSuc
                   ))}
                 </div>
               </div>
+
+              {entrega === "retirada" && <PontosRetirada />}
 
               {precisaEnvio && (
                 <>

@@ -3,6 +3,7 @@
 import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Volume2, VolumeX, X, Loader2, Tag, Check } from "lucide-react"
 import type { User } from "@supabase/supabase-js"
 
@@ -15,6 +16,8 @@ import { DiagonalBg } from "@/components/store/diagonal-bg"
 import AnimatedLogo from "@/components/animated-logo"
 import { GameMenuNav } from "@/components/game-menu-nav"
 import { StoreMobile } from "@/components/store/store-mobile"
+import { PontosRetirada } from "@/components/store/pontos-retirada"
+import { ULTIMO_PEDIDO_KEY } from "@/lib/store/paradas"
 
 interface PerfilLoja { adress: string | null; cpf: string | null }
 interface StoreClientProps {
@@ -194,6 +197,7 @@ export function StoreClient({ user, products, perfil, negativosPendentes }: Stor
 
 function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClientProps) {
   const cart = useCart()
+  const router = useRouter()
   const [selecionado, setSelecionado] = React.useState<Product | null>(products[0] ?? null)
   const [selecionadoId, setSelId]     = React.useState<string | null>(null)
   const [muted, setMuted]             = React.useState(true)
@@ -507,7 +511,7 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
       <AnimatePresence>
         {checkoutAberto && (
           <CheckoutModal cart={cart} user={user} perfil={perfil} negativosPendentes={negativosPendentes}
-            onClose={() => setCheckout(false)} onSuccess={() => { cart.limpar(); setCheckout(false) }} />
+            onClose={() => setCheckout(false)} onSuccess={() => { cart.limpar(); setCheckout(false); router.push("/proxima-parada") }} />
         )}
       </AnimatePresence>
     </div>
@@ -696,6 +700,20 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
     } catch { setErro("Erro de conexão.") } finally { setEnviando(false) }
   }
 
+  function stashPedido() {
+    try {
+      sessionStorage.setItem(
+        ULTIMO_PEDIDO_KEY,
+        JSON.stringify({
+          id: orderId ?? "",
+          itens: cart.items.map((i) => `${i.quantity}× ${i.product.name}`),
+        }),
+      )
+    } catch {
+      /* ignora */
+    }
+  }
+
   const precisaEnvio = entrega === "envio"
   const desconto     = cupomAplicado?.discount ?? 0
   const valorFrete   = precisaEnvio ? (freteSelecionado?.preco ?? 0) : 0
@@ -787,7 +805,7 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                   </div>
                   <p style={{ fontFamily:"'Press Start 2P', monospace", fontSize:12, color:"#22c55e" }}>PAGAMENTO CONFIRMADO</p>
                   <p style={{ fontFamily:"monospace", fontSize:12, color:"var(--muted-foreground)" }}>Seu pedido foi pago com sucesso!</p>
-                  <button onClick={onSuccess} style={{ width:"100%", padding:14, background:"#22c55e", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
+                  <button onClick={() => { stashPedido(); onSuccess() }} style={{ width:"100%", padding:14, background:"#22c55e", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
                 </div>
               ) : (
               <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:12, textAlign:"center" }}>
@@ -801,7 +819,7 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                   <CopyButton text={pixGerado.copia_cola} />
                 </div>
                 <p style={{ fontFamily:"monospace", fontSize:10, color:"var(--muted-foreground)" }}>Aguardando confirmação do pagamento...</p>
-                <button onClick={onSuccess} style={{ width:"100%", padding:12, background:"#e5271a", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
+                <button onClick={() => { stashPedido(); onSuccess() }} style={{ width:"100%", padding:12, background:"#e5271a", color:"#fff", border:"none", borderRadius:6, cursor:"pointer", fontFamily:"'Press Start 2P', monospace", fontSize:10 }}>CONCLUIR</button>
               </div>
               )
             ) : (
@@ -833,6 +851,9 @@ function CheckoutModal({ cart, user, perfil, negativosPendentes, onClose, onSucc
                     ))}
                   </div>
                 </div>
+
+                {/* Pontos de retirada — mostrados assim que "retirada" é escolhida */}
+                {entrega === "retirada" && <PontosRetirada />}
 
                 {/* Campos de envio */}
                 {precisaEnvio && (

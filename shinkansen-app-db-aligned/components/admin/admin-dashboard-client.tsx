@@ -1,8 +1,9 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Loader2, Save, Search } from "lucide-react"
+import { FlaskConical, Loader2, Save, Search, ShoppingBag } from "lucide-react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -316,11 +317,25 @@ export function AdminDashboardClient({
 
   return (
     <div className="container mx-auto px-4 sm:px-6 py-8 max-w-6xl">
-      <div className="mb-6">
-        <h1 className="text-3xl font-mono font-bold">ADMIN</h1>
-        <p className="text-muted-foreground font-mono text-sm">
-          Gerencie pedidos, atualize links das fotos e acompanhe os usuarios.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-mono font-bold">ADMIN</h1>
+          <p className="text-muted-foreground font-mono text-sm">
+            Gerencie pedidos, atualize links das fotos e acompanhe os usuarios.
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <Button asChild variant="outline" className="font-mono">
+            <Link href="/admin/revelacao">
+              <FlaskConical className="mr-2 h-4 w-4" /> Revelação
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="font-mono">
+            <Link href="/admin/retiradas">
+              <ShoppingBag className="mr-2 h-4 w-4" /> Retiradas
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="orders" className="gap-6">

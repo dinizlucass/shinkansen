@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
@@ -10,6 +10,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
+import { createClient } from "@/lib/supabase/client"
+import { normalizePhoneToE164 } from "@/lib/validators/profiles"
+import { ULTIMO_PEDIDO_KEY } from "@/lib/store/paradas"
 import {
   Select,
   SelectContent,
@@ -216,11 +219,18 @@ function validateFilm(film: FilmEntry, services: Service[]): boolean {
 
 export function OrderFormClient({ user, services }: OrderFormClientProps) {
   const router = useRouter()
-  const [films, setFilms] = useState<FilmEntry[]>([createEmptyFilm()])
+  // Inicia vazio e semeia o 1º filme só após montar — evita mismatch de
+  // hidratação (crypto.randomUUID gera ids diferentes no servidor e no cliente).
+  const [films, setFilms] = useState<FilmEntry[]>([])
+
+  useEffect(() => {
+    setFilms((prev) => (prev.length === 0 ? [createEmptyFilm()] : prev))
+  }, [])
   const [notes, setNotes] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [step, setStep] = useState<Step>(1)
   const [error, setError] = useState<string | null>(null)
+  const [account, setAccount] = useState({ full_name: "", phone: "", email: "", password: "" })
 
   // Memoized service categories
   const developmentServices = useMemo(
@@ -328,6 +338,56 @@ export function OrderFormClient({ user, services }: OrderFormClientProps) {
     setIsSubmitting(true)
     setError(null)
     try {
+      // Cadastro embutido (visitante): faz EXATAMENTE o mesmo que a tela
+      // /auth/sign-up que já funciona — normaliza o telefone para E.164,
+      // passa emailRedirectTo e deixa o trigger do banco criar o profile.
+      if (!user) {
+        const a = account
+        if (
+          !a.full_name.trim() ||
+          !/^\S+@\S+\.\S+$/.test(a.email) ||
+          a.password.length < 6
+        ) {
+          throw new Error(
+            "Preencha nome, e-mail e senha (mín. 6) para criar sua conta."
+          )
+        }
+
+        const phoneE164 = normalizePhoneToE164(a.phone)
+        if (!phoneE164) {
+          throw new Error(
+            "Telefone inválido. Informe DDD + número (ex: (11) 99999-9999)."
+          )
+        }
+
+        const supabase = createClient()
+        const { data: signUp, error: signUpErr } = await supabase.auth.signUp({
+          email: a.email,
+          password: a.password,
+          options: {
+            emailRedirectTo:
+              process.env.NEXT_PUBLIC_SITE_URL || `${window.location.origin}/`,
+            data: { full_name: a.full_name.trim(), phone: phoneE164 },
+          },
+        })
+
+        if (signUpErr) {
+          const jaExiste = /registered|already/i.test(signUpErr.message)
+          throw new Error(
+            jaExiste
+              ? "Este e-mail já tem conta. Faça login para continuar."
+              : signUpErr.message
+          )
+        }
+        if (!signUp.session) {
+          throw new Error(
+            "Conta criada! Confirme seu e-mail e faça login para finalizar o pedido."
+          )
+        }
+        // Não fazemos upsert: o trigger handle_new_user cria o profile e o
+        // servidor usa a metadata (full_name/phone) para validar o perfil.
+      }
+
       const payload = {
         notes,
         films: films.map(({ id, ...rest }) => ({
@@ -348,14 +408,28 @@ export function OrderFormClient({ user, services }: OrderFormClientProps) {
         throw new Error(message)
       }
 
-      router.push("/dashboard")
+      try {
+        sessionStorage.setItem(
+          ULTIMO_PEDIDO_KEY,
+          JSON.stringify({
+            id: json.orderId ?? "",
+            itens: films.map((f, i) =>
+              f.name?.trim() ? f.name.trim() : `Filme ${i + 1}`
+            ),
+          })
+        )
+      } catch {
+        /* ignora */
+      }
+
+      router.push("/proxima-parada")
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ocorreu um erro ao criar o pedido.")
     } finally {
       setIsSubmitting(false)
     }
-  }, [films, notes, router])
+  }, [films, notes, router, user, account])
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -456,6 +530,9 @@ export function OrderFormClient({ user, services }: OrderFormClientProps) {
           {step === 3 && (
             <StepThree
               key="step3"
+              user={user}
+              account={account}
+              setAccount={setAccount}
               error={error}
               isSubmitting={isSubmitting}
               onBack={() => setStep(2)}
@@ -701,14 +778,19 @@ function StepTwo({ films, services, notes, error, total, onBack, onContinue }: S
    STEP 3: TERMOS
    ============================================================================ */
 
+type AccountData = { full_name: string; phone: string; email: string; password: string }
+
 interface StepThreeProps {
+  user: User | null
+  account: AccountData
+  setAccount: (next: AccountData) => void
   error: string | null
   isSubmitting: boolean
   onBack: () => void
   onSubmit: () => void
 }
 
-function StepThree({ error, isSubmitting, onBack, onSubmit }: StepThreeProps) {
+function StepThree({ user, account, setAccount, error, isSubmitting, onBack, onSubmit }: StepThreeProps) {
   return (
     <motion.div
       key="step3"
@@ -717,6 +799,61 @@ function StepThree({ error, isSubmitting, onBack, onSubmit }: StepThreeProps) {
       exit={{ opacity: 0, x: -20 }}
     >
       <div className="space-y-6">
+        {!user && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="font-mono text-lg">CRIAR CONTA</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Você acompanha seu pedido por aqui. Crie sua conta para finalizar — ou{" "}
+                <a href="/auth/login" className="underline">entre</a> se já tiver uma.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="acc-nome">Nome completo</Label>
+                  <Input
+                    id="acc-nome"
+                    value={account.full_name}
+                    onChange={(e) => setAccount({ ...account, full_name: e.target.value })}
+                    placeholder="Seu nome"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="acc-tel">Telefone</Label>
+                  <Input
+                    id="acc-tel"
+                    value={account.phone}
+                    onChange={(e) => setAccount({ ...account, phone: e.target.value })}
+                    placeholder="(11) 90000-0000"
+                    inputMode="tel"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="acc-email">E-mail</Label>
+                  <Input
+                    id="acc-email"
+                    type="email"
+                    value={account.email}
+                    onChange={(e) => setAccount({ ...account, email: e.target.value })}
+                    placeholder="voce@email.com"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="acc-senha">Senha</Label>
+                  <Input
+                    id="acc-senha"
+                    type="password"
+                    value={account.password}
+                    onChange={(e) => setAccount({ ...account, password: e.target.value })}
+                    placeholder="mín. 6 caracteres"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader>
             <CardTitle className="font-mono text-lg">TERMOS DE SERVIÇO</CardTitle>

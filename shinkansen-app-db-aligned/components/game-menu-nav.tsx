@@ -5,7 +5,7 @@ import React from "react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, LogIn, Package, Shield, User, Camera, ShoppingBag } from "lucide-react"
+import { Home, LogIn, Package, Shield, User, FlaskConical, ShoppingBag, Mail } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -39,10 +39,15 @@ const navItems: NavItem[] = [
   },
   {
     href: "/orders",
-    label: "NOVO PEDIDO",
-    description: "Envie seus filmes para revelação",
-    icon: <Camera className="h-5 w-5" />,
-    requiresAuth: true,
+    label: "LABORATÓRIO",
+    description: "Envie seus filmes para revelação — não precisa ter conta",
+    icon: <FlaskConical className="h-5 w-5" />,
+  },
+  {
+    href: "/contato",
+    label: "CONTATO",
+    description: "E-mail, telefone e redes da Shinkansen",
+    icon: <Mail className="h-5 w-5" />,
   },
   {
     href: "/dashboard",
