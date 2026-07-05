@@ -1443,7 +1443,7 @@ function FilmEntryCard({
                         value={film.fileFormat ?? ""}
                         onValueChange={(value: "dng" | "jpg" | "raw") => onUpdate({ fileFormat: value })}
                       >
-                        <SelectTrigger className="font-mono bg-input w-full md:max-w-xs">
+                        <SelectTrigger className="font-mono bg-input w-full md:max-w-xs data-[placeholder]:text-red-500 data-[placeholder]:font-bold">
                           <SelectValue placeholder="Escolha o formato dos arquivos" />
                         </SelectTrigger>
                         <SelectContent>
