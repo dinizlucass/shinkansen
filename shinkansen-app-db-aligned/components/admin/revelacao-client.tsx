@@ -94,6 +94,13 @@ function statusVariant(status: string | null): "default" | "secondary" | "outlin
   return "outline"
 }
 
+// ── ID em base 36 (hexatrigesimal): dígitos 0-9 + letras A-Z ──
+// Ex.: 71 → "1Z", 1000 → "RS". Encurta o número e é o formato exibido/buscado.
+function idParaCodigo(n: number | null): string {
+  if (n == null) return "—"
+  return n.toString(36).toUpperCase()
+}
+
 export function RevelacaoClient({
   initialFila,
   initialGrupos,
@@ -408,9 +415,9 @@ export function RevelacaoClient({
           <div className="flex flex-1 gap-2">
             <Input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => setQ(e.target.value.replace(/[^0-9a-zA-Z]/g, "").toUpperCase())}
               onKeyDown={(e) => e.key === "Enter" && buscar()}
-              placeholder="Buscar filme por nº (id) ou nome para editar status/observação"
+              placeholder="Código da etiqueta (base-36, ex.: 1Z)"
             />
             <Button variant="secondary" onClick={buscar} disabled={busy}>
               <Search className="h-4 w-4" />
@@ -427,7 +434,7 @@ export function RevelacaoClient({
                   <li key={f.id} className="flex items-center justify-between gap-3 py-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">
-                        {f.id_humano ? `#${f.id_humano} · ` : ""}
+                        {f.id_humano ? `#${idParaCodigo(f.id_humano)} · ` : ""}
                         {f.name ?? "Sem nome"}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -552,7 +559,7 @@ export function RevelacaoClient({
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
-                        {f.id_humano ? `#${f.id_humano} · ` : ""}
+                        {f.id_humano ? `#${idParaCodigo(f.id_humano)} · ` : ""}
                         {f.name ?? "Sem nome"}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -651,7 +658,7 @@ export function RevelacaoClient({
                         <li key={f.id} className="flex items-center gap-2 py-2">
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm">
-                              {f.id_humano ? `#${f.id_humano} · ` : ""}
+                              {f.id_humano ? `#${idParaCodigo(f.id_humano)} · ` : ""}
                               {f.name ?? "Sem nome"}
                             </p>
                             <p className="text-xs text-muted-foreground">
@@ -690,7 +697,7 @@ export function RevelacaoClient({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Editar filme {editando?.id_humano ? `#${editando.id_humano}` : ""}
+              Editar filme {editando?.id_humano ? `#${idParaCodigo(editando.id_humano)}` : ""}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">

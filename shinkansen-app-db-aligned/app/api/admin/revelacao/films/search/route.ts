@@ -13,13 +13,18 @@ export async function GET(request: Request) {
 
   const admin = createAdminClient()
 
-  // Numérico → busca por id_humano; senão por nome (ilike)
-  const asNumber = Number.parseInt(q, 10)
-  const query = admin.from("films").select(FILM_COLS).limit(30)
+  // A busca vem da etiqueta: aceita SOMENTE código base-36 (hexatrigesimal) do
+  // id_humano. "20" → 72, "1Z" → 71. Qualquer outra coisa não é um código válido.
+  const token = q.replace(/^#/, "").toLowerCase()
+  if (!/^[0-9a-z]+$/.test(token)) return jsonOk({ films: [] })
+  const idBase36 = Number.parseInt(token, 36)
+  if (!Number.isFinite(idBase36)) return jsonOk({ films: [] })
 
-  const { data, error } = /^\d+$/.test(q)
-    ? await query.eq("id_humano", asNumber)
-    : await query.ilike("name", `%${q}%`)
+  const { data, error } = await admin
+    .from("films")
+    .select(FILM_COLS)
+    .eq("id_humano", idBase36)
+    .limit(30)
 
   if (error) return jsonErr(error.message, 500, error.code)
   return jsonOk({ films: data ?? [] })
