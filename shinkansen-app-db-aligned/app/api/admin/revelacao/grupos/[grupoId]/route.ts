@@ -67,5 +67,49 @@ export async function PATCH(
   if (error) return jsonErr(error.message, 500, error.code)
   if (!data) return jsonErr("Grupo não encontrado.", 404)
 
+  // Ao concluir a caixa, promove a "concluido" os filmes APENAS-REVELAÇÃO
+  // (sem nenhum serviço de digitalização). Filmes com digitalização seguem
+  // o fluxo normal de scanner/edição/upload e não são tocados.
+  if (parsed.data.status === "concluido") {
+    await promoverApenasRevelacao(admin, grupoId)
+  }
+
   return jsonOk(data)
+}
+
+const STATUS_TERMINAIS = new Set([
+  "concluido", "virgem", "velado", "descartado",
+  "suporte", "limpeza", "enviado", "embalado",
+])
+
+async function promoverApenasRevelacao(
+  admin: ReturnType<typeof createAdminClient>,
+  grupoId: string,
+) {
+  const { data: filmes } = await admin
+    .from("films")
+    .select("id, status")
+    .eq("grupo_id", grupoId)
+
+  const ids = (filmes ?? []).map((f: { id: string }) => f.id)
+  if (!ids.length) return
+
+  const { data: comDig } = await admin
+    .from("film_services")
+    .select("film_id, services!inner(category)")
+    .in("film_id", ids)
+    .eq("services.category", "digitalizacao")
+
+  const setDig = new Set((comDig ?? []).map((r: { film_id: string }) => r.film_id))
+
+  const promover = (filmes ?? [])
+    .filter(
+      (f: { id: string; status: string | null }) =>
+        !setDig.has(f.id) && !STATUS_TERMINAIS.has(f.status ?? ""),
+    )
+    .map((f: { id: string }) => f.id)
+
+  if (promover.length) {
+    await admin.from("films").update({ status: "concluido" }).in("id", promover)
+  }
 }
