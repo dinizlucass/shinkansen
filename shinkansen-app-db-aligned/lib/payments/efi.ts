@@ -267,6 +267,40 @@ export async function cancelEfiPixCharge(txid: string): Promise<void> {
   }
 }
 
+/**
+ * Revisa o VALOR de uma cobrança Pix imediata já existente, mantendo o mesmo
+ * txid/QR/link. Só funciona enquanto a cobrança está ATIVA (não paga). A Efí
+ * incrementa o campo `revisao` automaticamente a cada PATCH.
+ */
+export async function reviseEfiPixCharge(
+  txid: string,
+  amount: string,
+): Promise<{ txid: string; status: string; amount: string; raw: EfiPixChargeResponse }> {
+  const token = await getEfiPixAccessToken()
+  const { baseUrl } = getEfiPixConfig()
+  const body = JSON.stringify({ valor: { original: amount } })
+
+  const response = await requestWithMtls<EfiPixChargeResponse | Record<string, unknown>>({
+    method: "PATCH" as any,
+    url: `${baseUrl}/v2/cob/${txid}`,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Accept-Encoding": "identity",
+      "Content-Length": String(Buffer.byteLength(body)),
+    },
+    body,
+  })
+
+  if (!response.data || response.status >= 400 || !("txid" in response.data)) {
+    const message = getPixErrorMessage(response.data as Record<string, unknown> | null, response.rawBody)
+    throw new Error(`Efí revisão ${response.status}: ${message}`)
+  }
+
+  const c = response.data as EfiPixChargeResponse
+  return { txid: c.txid, status: c.status, amount: c.valor.original, raw: c }
+}
+
 export async function createEfiPixCharge(input: EfiPixCreateChargeInput): Promise<CreatedEfiPixCharge> {
   const token = await getEfiPixAccessToken()
   const { baseUrl } = getEfiPixConfig()
