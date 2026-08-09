@@ -40,6 +40,8 @@
     "@radix-ui/react-tooltip": "1.1.6",
     "@supabase/ssr": "0.8.0",
     "@supabase/supabase-js": "latest",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "@vercel/analytics": "1.3.1",
     "@vercel/blob": "^2.4.0",
     "autoprefixer": "^10.4.20",
