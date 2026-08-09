@@ -1,5 +1,5 @@
 import { jsonErr, jsonOk } from "@/lib/api/http"
-import { sendOrderStatusEmail } from "@/lib/email/order-status"
+import { sendOrderStatusEmail, sendStorePurchaseEmail } from "@/lib/email/order-status"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { configureEfiPixWebhook, getEfiPixConfig, getEfiPixWebhook } from "@/lib/payments/efi"
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
 
     const { data: storeOrder } = await admin
       .from("store_orders")
-      .select("id, status, payment_status, payment_last_payload, total_value, client_id")
+      .select("id, status, payment_status, payment_last_payload, total_value, client_id, delivery_type")
       .eq("payment_charge_id", pix.txid)
       .single()
 
@@ -245,7 +245,7 @@ export async function POST(request: Request) {
 
     console.log(`[webhook] store_order ${storeOrder.id} pago via Pix txid=${pix.txid}`)
 
-    // Email de confirmação
+    // Email de confirmação da compra na loja (com itens e valor pago).
     if (!storeAlreadyPaid && process.env.RESEND_API_KEY) {
       try {
         const { data: profile } = await admin
@@ -255,16 +255,39 @@ export async function POST(request: Request) {
           .single()
 
         if (profile?.email) {
-          await sendOrderStatusEmail({
+          // Itens comprados: nome do produto, quantidade e valor unitário.
+          const { data: itens } = await admin
+            .from("store_order_items")
+            .select("product_id, quantity, unit_price")
+            .eq("store_order_id", storeOrder.id)
+
+          const prodIds = [
+            ...new Set((itens ?? []).map((i: { product_id: string }) => i.product_id)),
+          ]
+          const { data: prods } = prodIds.length
+            ? await admin.from("products").select("id, name").in("id", prodIds)
+            : { data: [] as { id: string; name: string }[] }
+          const prodMap = new Map((prods ?? []).map((p) => [p.id, p.name]))
+
+          const items = (itens ?? []).map(
+            (i: { product_id: string; quantity: number; unit_price: number | null }) => ({
+              name: prodMap.get(i.product_id) ?? "Produto",
+              quantity: i.quantity,
+              unitPrice: i.unit_price,
+            }),
+          )
+
+          await sendStorePurchaseEmail({
             to: profile.email,
             customerName: profile.full_name ?? null,
             orderId: storeOrder.id,
-            status: "pago",
+            items,
             totalValue: Number(storeOrder.total_value ?? 0),
+            deliveryType: (storeOrder as { delivery_type?: string | null }).delivery_type ?? null,
           })
         }
       } catch (emailError) {
-        console.error("[webhook] Failed to send store order paid email", emailError)
+        console.error("[webhook] Failed to send store purchase email", emailError)
       }
     }
   }

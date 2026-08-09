@@ -13,9 +13,10 @@ export type ProductCategory =
   | "outro"
 
 export interface ProductImages {
-  thumb:   string  // miniatura para o grid de seleção
-  package: string  // foto da embalagem/rótulo
-  sample:  string  // foto de exemplo (resultado do filme)
+  thumb:   string    // miniatura para o grid de seleção
+  package: string    // foto da embalagem/rótulo
+  sample:  string    // 1ª foto de exemplo (compatibilidade)
+  samples: string[]  // todas as fotos de exemplo (resultado do filme)
 }
 
 export interface Product {

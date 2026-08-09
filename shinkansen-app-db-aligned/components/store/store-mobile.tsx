@@ -7,8 +7,9 @@
  */
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, ShoppingBag, Loader2, Check, Tag } from "lucide-react"
+import { X, ShoppingBag, Loader2, Check, Tag, Maximize2, ChevronLeft, ChevronRight } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 
@@ -422,9 +423,6 @@ function DificuldadeBar({ valor, estrelas }: { valor: number; estrelas: string }
   )
 }
 
-const IMAGES_ORDER = ["package", "sample", "thumb"] as const
-type ImageKey = typeof IMAGES_ORDER[number]
-
 function SheetProduto({ product, cart, onClose, onAdd }: {
   product: Product
   cart: ReturnType<typeof useCart>
@@ -460,14 +458,20 @@ function SheetProduto({ product, cart, onClose, onAdd }: {
     }
   }
 
-  // Lista de imagens disponíveis
+  const [fullscreen, setFullscreen] = React.useState(false)
+
+  // Lista de imagens disponíveis (embalagem + todos os exemplos + thumb).
   const imgs = React.useMemo(() => {
-    const list: { key: ImageKey; src: string }[] = []
-    for (const k of IMAGES_ORDER) {
-      const src = product.images?.[k]
-      if (src) list.push({ key: k, src })
-    }
-    return list.length > 0 ? list : [{ key: "thumb" as ImageKey, src: product.images?.thumb || "" }]
+    const list: { key: string; src: string; label: string }[] = []
+    if (product.images?.package) list.push({ key: "package", src: product.images.package, label: "EMBAL." })
+    const samples = product.images?.samples?.length
+      ? product.images.samples
+      : (product.images?.sample ? [product.images.sample] : [])
+    samples.forEach((s, i) =>
+      list.push({ key: `sample-${i}`, src: s, label: samples.length > 1 ? `EXEMPLO ${i + 1}` : "EXEMPLO" }),
+    )
+    if (product.images?.thumb) list.push({ key: "thumb", src: product.images.thumb, label: "THUMB" })
+    return list.length > 0 ? list : [{ key: "thumb", src: product.images?.thumb || "", label: "THUMB" }]
   }, [product])
 
   // Swipe horizontal (muda imagem) + vertical (fechar / adicionar)
@@ -516,11 +520,18 @@ function SheetProduto({ product, cart, onClose, onAdd }: {
     }
   }
 
-  const LABEL: Record<string, string> = { package: "EMBAL.", sample: "EXEMPLO", thumb: "THUMB" }
-
   function isVideo(src: string) {
     return /\.(mp4|webm|mov)(\?|$)/i.test(src)
   }
+
+  const goImg = (d: number) =>
+    setImgIdx((i) => (i + d + imgs.length) % imgs.length)
+
+  React.useEffect(() => {
+    setImgIdx(0)
+    setFullscreen(false)
+    setZoomed(false)
+  }, [product.id])
 
   return (
     <>
@@ -618,8 +629,19 @@ function SheetProduto({ product, cart, onClose, onAdd }: {
             {/* Label da imagem atual */}
             {!zoomed && (
               <div style={{ position: "absolute", top: 8, left: 8, fontFamily: "monospace", fontSize: 9, background: "rgba(0,0,0,0.7)", color: "#fff", padding: "2px 6px", borderRadius: 3 }}>
-                {LABEL[imgs[imgIdx].key] || imgs[imgIdx].key.toUpperCase()}
+                {imgs[imgIdx].label}
               </div>
+            )}
+
+            {/* Botão de tela cheia */}
+            {!zoomed && imgs[imgIdx].src && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setFullscreen(true) }}
+                title="Ver em tela cheia"
+                style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 4, border: "none", background: "rgba(0,0,0,0.7)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              >
+                <Maximize2 size={14} />
+              </button>
             )}
 
             {/* Hint de swipe */}
@@ -636,6 +658,53 @@ function SheetProduto({ product, cart, onClose, onAdd }: {
               </div>
             )}
           </div>
+
+          {fullscreen && typeof document !== "undefined" &&
+            createPortal(
+              <div
+                onClick={() => setFullscreen(false)}
+                style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.94)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
+              >
+                <button
+                  onClick={(e) => { e.stopPropagation(); setFullscreen(false) }}
+                  title="Fechar"
+                  style={{ position: "absolute", top: 14, right: 14, width: 40, height: 40, borderRadius: 20, border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                >
+                  <X size={22} />
+                </button>
+
+                {imgs.length > 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); goImg(-1) }}
+                    style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", width: 44, height: 44, borderRadius: 22, border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                  >
+                    <ChevronLeft size={26} />
+                  </button>
+                )}
+
+                {isVideo(imgs[imgIdx].src) ? (
+                  <video autoPlay loop muted playsInline onClick={(e) => e.stopPropagation()} style={{ maxWidth: "96vw", maxHeight: "86vh", objectFit: "contain" }}>
+                    <source src={imgs[imgIdx].src} type={imgs[imgIdx].src.endsWith(".webm") ? "video/webm" : "video/mp4"} />
+                  </video>
+                ) : (
+                  <img src={imgs[imgIdx].src} alt={product.name} draggable={false} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "96vw", maxHeight: "86vh", objectFit: "contain" }} />
+                )}
+
+                {imgs.length > 1 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); goImg(1) }}
+                    style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", width: 44, height: 44, borderRadius: 22, border: "none", background: "rgba(255,255,255,0.14)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                  >
+                    <ChevronRight size={26} />
+                  </button>
+                )}
+
+                <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", fontFamily: "monospace", fontSize: 11, color: "#ccc", textTransform: "uppercase" }}>
+                  {imgs[imgIdx].label} · {imgIdx + 1}/{imgs.length}
+                </div>
+              </div>,
+              document.body,
+            )}
 
           {/* Marca + nome + badge processo */}
           <div style={{ marginBottom: 8 }}>

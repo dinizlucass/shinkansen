@@ -343,6 +343,13 @@ export async function POST(req: Request) {
     }
 
     if (clientEmail && process.env.RESEND_API_KEY) {
+      // Resumo por filme: nome + serviços escolhidos (para o e-mail "criado").
+      const serviceItems = input.films.map((film, index) => ({
+        film: (film.name?.trim() || `FILME ${index + 1}`).trim(),
+        services: services
+          .filter((s) => film.serviceIds.includes(String(s.id)))
+          .map((s) => s.name),
+      }))
       try {
         await sendOrderStatusEmail({
           to: clientEmail,
@@ -350,6 +357,7 @@ export async function POST(req: Request) {
           orderId: order.id,
           status: "criado",
           totalValue,
+          serviceItems,
         })
       } catch (emailError) {
         console.error("Failed to send created order email", emailError)

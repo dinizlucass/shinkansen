@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { FlaskConical, Loader2, Save, Search, ShoppingBag } from "lucide-react"
+import { FlaskConical, Loader2, Package, Save, Search, ShoppingBag } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
@@ -113,6 +113,49 @@ function getRelatedProfile(profile: Order["profiles"]) {
   return profile ?? null
 }
 
+// Normaliza a categoria do serviço (mesma lógica do /api/orders).
+function normCategoria(value: string | null | undefined) {
+  const n = (value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+  if (["scanning", "digitalizacao", "digitalizacao_filme"].includes(n)) return "scanning"
+  if (["development", "revelacao", "revelacao_filme"].includes(n)) return "development"
+  if (["prazo", "deadline"].includes(n)) return "prazo"
+  if (["printing", "impressao"].includes(n)) return "printing"
+  return n
+}
+
+// Achata os serviços do filme (film_services → services pode vir objeto ou array).
+function servicosDoFilme(film: Film): Service[] {
+  const out: Service[] = []
+  for (const fs of film.film_services ?? []) {
+    const s = fs.services
+    if (!s) continue
+    if (Array.isArray(s)) out.push(...s)
+    else out.push(s)
+  }
+  return out
+}
+
+// Deriva as infos exibidas: serviços, tipos de digitalização e se é expresso.
+function infoServicos(film: Film) {
+  const svcs = servicosDoFilme(film)
+  const digitalizacoes = svcs
+    .filter((s) => normCategoria(s.category) === "scanning")
+    .map((s) => s.name)
+  const expresso = svcs.some(
+    (s) =>
+      normCategoria(s.category) === "prazo" ||
+      /express|expresso|urgente/i.test(s.name),
+  )
+  return {
+    servicos: svcs.map((s) => s.name),
+    digitalizacoes,
+    expresso,
+  }
+}
+
 export function AdminDashboardClient({
   orders,
   users,
@@ -160,12 +203,38 @@ export function AdminDashboardClient({
   )
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null)
   const [savingUserId, setSavingUserId] = useState<string | null>(null)
+  // Status de filme alterado no painel (id do filme → novo status), para
+  // refletir na tela sem recarregar. Usado ao marcar "retirado".
+  const [filmStatusOverride, setFilmStatusOverride] = useState<Record<string, string>>({})
+  const [savingFilmId, setSavingFilmId] = useState<string | null>(null)
   const [orderFeedback, setOrderFeedback] = useState<
     Record<string, { type: "success" | "error"; text: string }>
   >({})
   const [userFeedback, setUserFeedback] = useState<
     Record<string, { type: "success" | "error"; text: string }>
   >({})
+
+  // Atualiza o status de um filme (usado no botão "Marcar retirado").
+  // Chama o endpoint que já existe, que grava e notifica o cliente por e-mail.
+  async function atualizarStatusFilme(filmId: string, novoStatus: string) {
+    setSavingFilmId(filmId)
+    try {
+      const res = await fetch(`/api/admin/revelacao/films/${filmId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: novoStatus }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => null)
+        throw new Error(j?.error?.message ?? "Falha ao atualizar o filme.")
+      }
+      setFilmStatusOverride((prev) => ({ ...prev, [filmId]: novoStatus }))
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao atualizar o filme.")
+    } finally {
+      setSavingFilmId(null)
+    }
+  }
 
   const filteredOrders = useMemo(() => {
     const q = orderQuery.trim().toLowerCase()
@@ -335,6 +404,11 @@ export function AdminDashboardClient({
               <ShoppingBag className="mr-2 h-4 w-4" /> Retiradas
             </Link>
           </Button>
+          <Button asChild variant="outline" className="font-mono">
+            <Link href="/admin/devolucao">
+              <Package className="mr-2 h-4 w-4" /> Devolução
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -453,7 +527,10 @@ export function AdminDashboardClient({
 
                       {order.films?.length > 0 && (
                         <div className="grid gap-2">
-                          {order.films.map((film) => (
+                          {order.films.map((film) => {
+                            const info = infoServicos(film)
+                            const statusEfetivo = filmStatusOverride[film.id] ?? film.status
+                            return (
                             <div
                               key={film.id}
                               className="border border-border rounded p-3 flex items-start justify-between gap-3"
@@ -465,17 +542,65 @@ export function AdminDashboardClient({
                                   {film.push_pull ? ` • puxada ${film.push_pull}` : ""}
                                   {film.file_format ? ` • ${film.file_format.toUpperCase()}` : ""}
                                 </p>
+                                {info.digitalizacoes.length > 0 && (
+                                  <p className="font-mono text-xs text-muted-foreground mt-1">
+                                    Digitalização: {info.digitalizacoes.join(", ")}
+                                  </p>
+                                )}
+                                {info.servicos.length > 0 && (
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {info.servicos.map((nome, i) => (
+                                      <Badge
+                                        key={`${film.id}-svc-${i}`}
+                                        variant="secondary"
+                                        className="font-mono text-[10px]"
+                                      >
+                                        {nome}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
                                 {film.notes && (
                                   <p className="font-mono text-xs text-muted-foreground mt-1 line-clamp-2">
                                     {film.notes}
                                   </p>
                                 )}
                               </div>
-                              <Badge variant="outline" className="font-mono shrink-0">
-                                {film.status}
-                              </Badge>
+                              <div className="flex shrink-0 flex-col items-end gap-1">
+                                {info.expresso && (
+                                  <Badge className="font-mono bg-primary text-primary-foreground">
+                                    EXPRESSO
+                                  </Badge>
+                                )}
+                                <Badge variant="outline" className="font-mono">
+                                  {statusEfetivo}
+                                </Badge>
+                                <Select
+                                  value={
+                                    ["embalado", "enviado", "retirado"].includes(statusEfetivo)
+                                      ? statusEfetivo
+                                      : undefined
+                                  }
+                                  onValueChange={(v) => atualizarStatusFilme(film.id, v)}
+                                  disabled={savingFilmId === film.id}
+                                >
+                                  <SelectTrigger className="font-mono text-[10px] h-7 w-[132px]">
+                                    {savingFilmId === film.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <SelectValue placeholder="Alterar status" />
+                                    )}
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="embalado" className="font-mono">Embalado</SelectItem>
+                                    <SelectItem value="enviado" className="font-mono">Enviado</SelectItem>
+                                    <SelectItem value="retirado" className="font-mono">Retirado</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       )}
 

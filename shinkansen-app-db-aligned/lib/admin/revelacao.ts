@@ -25,6 +25,7 @@ export const STATUS_FILME = [
   "limpeza",
   "embalado",
   "enviado",
+  "retirado",
   "descartado",
 ] as const
 export type StatusFilme = (typeof STATUS_FILME)[number]

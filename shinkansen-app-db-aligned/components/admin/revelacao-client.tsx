@@ -8,11 +8,14 @@ import {
   Loader2,
   Pencil,
   Plus,
+  QrCode,
   Search,
   Settings2,
   Trash2,
   X,
 } from "lucide-react"
+
+import { QrScanner } from "./qr-scanner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -52,6 +55,7 @@ const STATUS_FILME = [
   "limpeza",
   "embalado",
   "enviado",
+  "retirado",
   "descartado",
 ] as const
 const LIMITE_TANQUE = 8
@@ -101,6 +105,14 @@ function idParaCodigo(n: number | null): string {
   return n.toString(36).toUpperCase()
 }
 
+// O cadastro do filme é feito pelo CLIENTE; no painel exibimos "conferido" para
+// o status interno "cadastrado". O valor gravado no banco continua "cadastrado".
+const ROTULO_STATUS: Record<string, string> = { cadastrado: "conferido" }
+function rotuloStatus(s: string | null | undefined): string {
+  if (!s) return "—"
+  return ROTULO_STATUS[s.toLowerCase()] ?? s
+}
+
 export function RevelacaoClient({
   initialFila,
   initialGrupos,
@@ -128,6 +140,7 @@ export function RevelacaoClient({
   const [q, setQ] = useState("")
   const [resultados, setResultados] = useState<Filme[]>([])
   const [buscou, setBuscou] = useState(false)
+  const [scanOpen, setScanOpen] = useState(false)
 
   // edição de filme
   const [editando, setEditando] = useState<Filme | null>(null)
@@ -338,8 +351,15 @@ export function RevelacaoClient({
     )
   }
 
-  async function buscar() {
-    const termo = q.trim()
+  function aoEscanear(texto: string) {
+    const code = texto.replace(/[^0-9a-zA-Z]/g, "").toUpperCase()
+    setScanOpen(false)
+    setQ(code)
+    buscar(code)
+  }
+
+  async function buscar(termoDireto?: string) {
+    const termo = (termoDireto ?? q).trim()
     if (!termo) {
       setResultados([])
       setBuscou(false)
@@ -419,8 +439,17 @@ export function RevelacaoClient({
               onKeyDown={(e) => e.key === "Enter" && buscar()}
               placeholder="Código da etiqueta (base-36, ex.: 1Z)"
             />
-            <Button variant="secondary" onClick={buscar} disabled={busy}>
+            <Button variant="secondary" onClick={() => buscar()} disabled={busy}>
               <Search className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setScanOpen(true)}
+              disabled={busy}
+              title="Escanear QR da etiqueta"
+            >
+              <QrCode className="h-4 w-4" />
             </Button>
           </div>
         </CardContent>
@@ -438,7 +467,7 @@ export function RevelacaoClient({
                         {f.name ?? "Sem nome"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {f.film_type ?? "—"} · {f.status ?? "—"}
+                        {f.film_type ?? "—"} · {rotuloStatus(f.status)}
                       </p>
                     </div>
                     <Button size="sm" variant="outline" onClick={() => abrirEdicao(f)}>
@@ -663,7 +692,7 @@ export function RevelacaoClient({
                             </p>
                             <p className="text-xs text-muted-foreground">
                               <Badge variant={statusVariant(f.status)} className="mr-1">
-                                {f.status ?? "—"}
+                                {rotuloStatus(f.status)}
                               </Badge>
                               {(f.film_type ?? "").toUpperCase()}
                             </p>
@@ -692,6 +721,13 @@ export function RevelacaoClient({
         </Card>
       </div>
 
+      {/* ── SCANNER DE QR ── */}
+      <QrScanner
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onResult={aoEscanear}
+      />
+
       {/* ── DIALOG EDIÇÃO DE FILME ── */}
       <Dialog open={!!editando} onOpenChange={(o) => !o && setEditando(null)}>
         <DialogContent>
@@ -710,7 +746,7 @@ export function RevelacaoClient({
                 <SelectContent>
                   {STATUS_FILME.map((s) => (
                     <SelectItem key={s} value={s}>
-                      {s}
+                      {rotuloStatus(s)}
                     </SelectItem>
                   ))}
                 </SelectContent>

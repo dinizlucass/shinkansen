@@ -45,15 +45,23 @@ export const orderStatusEnum = z.enum([
   "finalizado",
 ])
 
+// Vocabulário único de status de filme — idêntico ao STATUS_FILME do interno
+// (Interno-local/routers/admin.py). Inclui o fluxo de devolução dos negativos.
 export const filmStatusEnum = z.enum([
   "criado",
-  "conferido",
+  "cadastrado",
   "revelando",
   "digitalizando",
-  "suporte",
-  "limpeza",
   "edicao",
   "concluido",
+  "virgem",
+  "velado",
+  "suporte",
+  "limpeza",
+  "embalado",
+  "enviado",
+  "retirado",
+  "descartado",
 ])
 
 export const filmFileFormatEnum = z.enum(["tiff","dng", "jpg", "raw"])

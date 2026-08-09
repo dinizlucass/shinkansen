@@ -13,6 +13,26 @@ type OrderStatusEmailInput = {
   paymentLinkUrl?: string | null
   pixCopyPaste?: string | null
   photoLink?: string | null
+  // Resumo do pedido de serviço: por filme, o nome e os serviços escolhidos.
+  // Usado no e-mail "criado".
+  serviceItems?: { film: string; services: string[] }[]
+}
+
+// Item de uma compra na loja (produtos), usado no e-mail de compra confirmada.
+export type StorePurchaseItem = {
+  name: string
+  quantity: number
+  unitPrice: number | null
+}
+
+type StorePurchaseEmailInput = {
+  to: string
+  customerName?: string | null
+  orderId: string
+  items: StorePurchaseItem[]
+  totalValue?: number | null
+  // "retirada" | "envio"/"correios" | outro/desconhecido → mensagem genérica.
+  deliveryType?: string | null
 }
 
 const INTERNAL_CC_EMAIL = "films.shinkansen@gmail.com"
@@ -153,18 +173,30 @@ function getStatusEmailContent(input: OrderStatusEmailInput) {
   const totalLine = input.totalValue !== undefined ? `Total: <strong>${formatCurrency(input.totalValue)}</strong>` : null
 
   switch (input.status) {
-    case "criado":
+    case "criado": {
+      // Uma linha por filme com os serviços escolhidos.
+      const filmeLinhas = (input.serviceItems ?? []).map(
+        (it) =>
+          `${escapeHtml(it.film)}: <strong>${
+            it.services.length ? it.services.map(escapeHtml).join(", ") : "—"
+          }</strong>`,
+      )
       return {
-        subject: `Pedido #${shortOrderId} criado com sucesso`,
+        subject: `Pedido #${shortOrderId} registrado`,
         html: renderEmailLayout({
           eyebrow: "Novo pedido",
-          title: "Pedido criado com sucesso",
-          intro: `${greeting}, seu pedido foi criado e ja esta registrado no sistema do Shinkansen Films.`,
-          details: [orderLine, ...(totalLine ? [totalLine] : [])],
+          title: "Pedido registrado",
+          intro: `${greeting}, recebemos o seu pedido. Confira abaixo o resumo dos filmes e serviços cadastrados.`,
+          details: [
+            orderLine,
+            ...filmeLinhas,
+            ...(totalLine ? [totalLine] : []),
+          ],
           closing:
-            "Nossa equipe vai acompanhar os proximos passos e voce recebera novas atualizacoes por email conforme o andamento do pedido.",
+            "Importante: o link de pagamento sera enviado por e-mail somente apos a nossa equipe receber e conferir os filmes no laboratorio. Voce sera avisado a cada etapa.",
         }),
       }
+    }
 
     case "recebido":
       return {
@@ -267,4 +299,56 @@ export async function sendOrderStatusEmail(input: OrderStatusEmailInput) {
 
 export function isNotifiableOrderStatus(status: string): status is OrderStatusEmailStatus {
   return ["criado", "recebido", "aguardando_pagamento", "pago", "finalizado"].includes(status)
+}
+
+/**
+ * E-mail de confirmação de COMPRA NA LOJA (produtos), enviado quando o
+ * pagamento é confirmado. Mostra o id do pedido, os itens comprados (com
+ * quantidade, valor unitário e subtotal) e o total pago, avisando que o
+ * cliente será notificado quando o pedido estiver pronto para retirada ou
+ * for enviado pelos Correios.
+ */
+export async function sendStorePurchaseEmail(input: StorePurchaseEmailInput) {
+  const resend = getResendClient()
+  const from = `Shinkansen Films <${process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev"}>`
+  const replyTo = process.env.RESEND_REPLY_TO || undefined
+
+  const shortOrderId = input.orderId.slice(0, 8).toUpperCase()
+  const greeting = getGreeting(input.customerName)
+
+  const itemRows = input.items.map((item) => {
+    const subtotal = (Number(item.unitPrice ?? 0)) * item.quantity
+    return `${escapeHtml(item.name)} — ${item.quantity} × ${formatCurrency(
+      item.unitPrice,
+    )} = <strong>${formatCurrency(subtotal)}</strong>`
+  })
+
+  const html = renderEmailLayout({
+    eyebrow: "Pagamento confirmado",
+    title: "Compra confirmada",
+    intro: `${greeting}! Obrigado por comprar com a Shinkansen Films — recebemos o pagamento da sua compra.`,
+    details: [
+      `Pedido: <strong>#${shortOrderId}</strong>`,
+      ...itemRows,
+      `Total pago: <strong>${formatCurrency(input.totalValue)}</strong>`,
+    ],
+    // As etapas de embalado/enviado são notificadas pelo sistema do laboratório,
+    // então aqui avisamos apenas que os produtos entraram em separação.
+    closing: "Seus produtos já estão em separação. Avisaremos você nas próximas etapas.",
+  })
+
+  const response = await resend.emails.send({
+    from,
+    to: input.to,
+    cc: INTERNAL_CC_EMAIL,
+    subject: `Compra #${shortOrderId} confirmada`,
+    html,
+    ...(replyTo ? { replyTo } : {}),
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data
 }

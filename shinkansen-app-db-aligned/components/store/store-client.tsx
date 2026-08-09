@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Volume2, VolumeX, X, Loader2, Tag, Check } from "lucide-react"
+import { Volume2, VolumeX, X, Loader2, Tag, Check, Maximize2, ChevronLeft, ChevronRight } from "lucide-react"
 import type { User } from "@supabase/supabase-js"
 
 import type { Product, DeliveryType } from "@/lib/store/types"
@@ -530,16 +531,42 @@ function FichaImagem({ product }: { product: Product }) {
   const abas = React.useMemo(() => {
     const list: { key: string; label: string; src: string }[] = []
     if (product.images.package) list.push({ key: "package", label: "EMBAL.", src: product.images.package })
-    if (product.images.sample)  list.push({ key: "sample",  label: "EXEMPLO", src: product.images.sample })
-    if (product.images.thumb)   list.push({ key: "thumb",   label: "THUMB",   src: product.images.thumb })
+    const samples = product.images.samples?.length
+      ? product.images.samples
+      : (product.images.sample ? [product.images.sample] : [])
+    samples.forEach((s, i) =>
+      list.push({
+        key: `sample-${i}`,
+        label: samples.length > 1 ? `EXEMPLO ${i + 1}` : "EXEMPLO",
+        src: s,
+      }),
+    )
+    if (product.images.thumb) list.push({ key: "thumb", label: "THUMB", src: product.images.thumb })
     return list.length ? list : [{ key: "thumb", label: "THUMB", src: product.images.thumb || "" }]
   }, [product])
 
   const [idx, setIdx] = React.useState(0)
-  React.useEffect(() => setIdx(0), [product.id])
+  const [fullscreen, setFullscreen] = React.useState(false)
+  React.useEffect(() => { setIdx(0); setFullscreen(false) }, [product.id])
 
   const current = abas[idx]
   const video = isVideo(current.src)
+
+  const go = React.useCallback(
+    (d: number) => setIdx((i) => (i + d + abas.length) % abas.length),
+    [abas.length],
+  )
+
+  React.useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullscreen(false)
+      else if (e.key === "ArrowRight") go(1)
+      else if (e.key === "ArrowLeft") go(-1)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [fullscreen, go])
 
   return (
     <>
@@ -571,8 +598,20 @@ function FichaImagem({ product }: { product: Product }) {
           )}
         </motion.div>
       </AnimatePresence>
+
+      {/* Botão de tela cheia */}
+      {current.src && (
+        <button
+          onClick={() => setFullscreen(true)}
+          title="Ver em tela cheia"
+          style={{ position: "absolute", top: 6, right: 6, zIndex: 3, width: 26, height: 26, borderRadius: 3, border: "none", background: "rgba(0,0,0,0.7)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <Maximize2 size={13} />
+        </button>
+      )}
+
       {abas.length > 1 && (
-        <div style={{ position: "absolute", bottom: 6, left: 6, display: "flex", gap: 4, zIndex: 2 }}>
+        <div style={{ position: "absolute", bottom: 6, left: 6, display: "flex", gap: 4, zIndex: 2, flexWrap: "wrap", maxWidth: "80%" }}>
           {abas.map((a, i) => (
             <button key={a.key} onClick={() => setIdx(i)} style={{ fontFamily: "monospace", fontSize: 7, padding: "2px 6px", borderRadius: 2, background: idx === i ? "#e5271a" : "rgba(0,0,0,0.7)", color: idx === i ? "#fff" : "#888", border: "none", cursor: "pointer", textTransform: "uppercase" }}>
               {a.label}
@@ -580,6 +619,55 @@ function FichaImagem({ product }: { product: Product }) {
           ))}
         </div>
       )}
+
+      {fullscreen && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            onClick={() => setFullscreen(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.93)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}
+          >
+            <button
+              onClick={(e) => { e.stopPropagation(); setFullscreen(false) }}
+              title="Fechar"
+              style={{ position: "absolute", top: 16, right: 16, width: 40, height: 40, borderRadius: 4, border: "none", background: "rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <X size={22} />
+            </button>
+
+            {abas.length > 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); go(-1) }}
+                title="Anterior"
+                style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 44, height: 44, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <ChevronLeft size={26} />
+              </button>
+            )}
+
+            {video ? (
+              <video autoPlay loop muted playsInline onClick={(e) => e.stopPropagation()} style={{ maxWidth: "92vw", maxHeight: "88vh", objectFit: "contain" }}>
+                <source src={current.src} type={current.src.endsWith(".webm") ? "video/webm" : "video/mp4"} />
+              </video>
+            ) : (
+              <img src={current.src} alt={product.name} draggable={false} onClick={(e) => e.stopPropagation()} style={{ maxWidth: "92vw", maxHeight: "88vh", objectFit: "contain" }} />
+            )}
+
+            {abas.length > 1 && (
+              <button
+                onClick={(e) => { e.stopPropagation(); go(1) }}
+                title="Próxima"
+                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", width: 44, height: 44, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.12)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <ChevronRight size={26} />
+              </button>
+            )}
+
+            <div style={{ position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)", fontFamily: "monospace", fontSize: 11, color: "#ccc", textTransform: "uppercase" }}>
+              {current.label} · {idx + 1}/{abas.length}
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   )
 }

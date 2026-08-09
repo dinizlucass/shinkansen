@@ -50,11 +50,28 @@ function normalizarUrl(url: string | null, largura = 1000): string | null {
   return url
 }
 
+/**
+ * Aceita várias fotos de exemplo no MESMO campo example_url, separadas por
+ * vírgula, ponto-e-vírgula, barra vertical ou quebra de linha. Assim dá para
+ * ter mais de um exemplo sem alterar o schema do banco.
+ */
+function parseExemplos(raw: string | null): string[] {
+  if (!raw) return []
+  return raw
+    .split(/[\n,;|]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((u) => normalizarUrl(u, 1400))
+    .filter((u): u is string => !!u)
+}
+
 function montarImagens(r: ProductRow): Product["images"] {
+  const samples = parseExemplos(r.example_url)
   return {
     thumb:   normalizarUrl(r.thumb_url, 600)    ?? normalizarUrl(r.image_url, 600)  ?? PLACEHOLDER,
     package: normalizarUrl(r.image_url, 1000)   ?? normalizarUrl(r.thumb_url, 1000) ?? PLACEHOLDER,
-    sample:  normalizarUrl(r.example_url, 1000) ?? normalizarUrl(r.image_url, 1000) ?? PLACEHOLDER,
+    sample:  samples[0] ?? normalizarUrl(r.image_url, 1000) ?? PLACEHOLDER,
+    samples,
   }
 }
 

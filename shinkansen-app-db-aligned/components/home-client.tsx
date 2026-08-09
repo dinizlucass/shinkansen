@@ -116,7 +116,7 @@ export function HomeClient({ user, initialSlides = [] }: HomeClientProps) {
       </div>
 
       <footer className="relative z-10 px-8 py-4 flex justify-between items-center text-xs font-mono text-muted-foreground border-t border-border bg-background/80 backdrop-blur">
-        <span>SKS v0.5</span>
+        <span>SKS v: #{process.env.NEXT_PUBLIC_COMMIT_SHA}</span>
         <span>DESDE 2026</span>
       </footer>
     </div>

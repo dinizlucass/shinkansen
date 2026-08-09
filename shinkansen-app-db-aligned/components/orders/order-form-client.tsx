@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
@@ -21,11 +21,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { AnimatedLogo } from "@/components/animated-logo"
 import { GameMenuNav } from "@/components/game-menu-nav"
 import { FadeIn, SlideIn } from "@/components/page-transition"
@@ -157,10 +156,47 @@ function createEmptyFilm(): FilmEntry {
     id: crypto.randomUUID(),
     name: "",
     serviceIds: [],
-    fileFormat: null,
+    fileFormat: "jpg", // JPG é o formato padrão
     pushPull: 0,
     observation: "",
   }
+}
+
+// Novo filme herdando os dados do anterior (serviços, formato, puxada),
+// deixando apenas o nome em branco. Base para o botão "Adicionar filme".
+function createFilmFromPrevious(base: FilmEntry | undefined): FilmEntry {
+  if (!base) return createEmptyFilm()
+  return {
+    id: crypto.randomUUID(),
+    name: "",
+    serviceIds: [...base.serviceIds],
+    fileFormat: base.fileFormat ?? "jpg",
+    pushPull: base.pushPull,
+    observation: "",
+  }
+}
+
+// Dica clicável (abre no toque/clique). Substitui os tooltips de hover, que
+// não abriam no celular. Usa Popover (funciona em mobile e desktop).
+function Hint({
+  children,
+  side = "right",
+}: {
+  children: ReactNode
+  side?: "top" | "right" | "bottom" | "left"
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-5 w-5 p-0 bg-transparent">
+          <Info className="h-3.5 w-3.5 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side={side} className="max-w-xs font-mono text-xs">
+        {children}
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 /* ============================================================================
@@ -260,7 +296,7 @@ export function OrderFormClient({ user, services }: OrderFormClientProps) {
 
   // Actions
   const addFilm = useCallback(() => {
-    setFilms((prev) => [...prev, createEmptyFilm()])
+    setFilms((prev) => [...prev, createFilmFromPrevious(prev[prev.length - 1])])
   }, [])
 
   const removeFilm = useCallback((id: string) => {
@@ -1270,7 +1306,7 @@ function FilmEntryCard({
   )
 
   return (
-    <TooltipProvider>
+    <>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1299,17 +1335,10 @@ function FilmEntryCard({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label className="font-mono text-xs uppercase">Nome do Filme</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0 bg-transparent">
-                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-xs font-mono text-xs">
-                    Este nome será usado para criar a pasta com os arquivos digitalizados. Ex:
-                    &quot;Viagem SP 2024&quot;, &quot;Aniversário Maria&quot;
-                  </TooltipContent>
-                </Tooltip>
+                <Hint>
+                  Este nome será usado para criar a pasta com os arquivos digitalizados. Ex:
+                  &quot;Viagem SP 2024&quot;, &quot;Aniversário Maria&quot;
+                </Hint>
               </div>
               <Input
                 placeholder="Ex: Viagem SP 2024"
@@ -1323,16 +1352,7 @@ function FilmEntryCard({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label className="font-mono text-xs uppercase">Observação</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0 bg-transparent">
-                      <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-xs font-mono text-xs">
-                    Caso precise de informação complementar use esse campo.
-                  </TooltipContent>
-                </Tooltip>
+                <Hint>Caso precise de informação complementar use esse campo.</Hint>
               </div>
               <Textarea
                 placeholder="Instruções especiais para este filme..."
@@ -1375,16 +1395,9 @@ function FilmEntryCard({
                     >
                       <div className="flex items-center gap-2">
                         <Label className="font-mono text-xs uppercase text-muted-foreground">Ajuste de Puxada (Push/Pull)</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 bg-transparent">
-                              <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="max-w-xs font-mono text-xs">
-                            Se expôs o rolo num ISO diferente do rótulo, indique aqui a puxada a aplicar no químico.
-                          </TooltipContent>
-                        </Tooltip>
+                        <Hint>
+                          Se expôs o rolo num ISO diferente do rótulo, indique aqui a puxada a aplicar no químico.
+                        </Hint>
                       </div>
                       <Select
                         value={film.pushPull.toString()}
@@ -1428,30 +1441,28 @@ function FilmEntryCard({
                     >
                       <div className="flex items-center gap-2">
                         <Label className="font-mono text-xs uppercase text-muted-foreground">Formato dos Arquivos Digitais</Label>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-5 w-5 p-0 bg-transparent">
-                              <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="max-w-xs font-mono text-xs">
-                            JPG: pronto para redes sociais. DNG: ideal para edição. RAW: ficheiro bruto do scanner.
-                          </TooltipContent>
-                        </Tooltip>
+                        <Hint>
+                          JPG: pronto para redes sociais. DNG: ideal para edição. RAW: ficheiro bruto do scanner.
+                        </Hint>
                       </div>
-                      <Select 
-                        value={film.fileFormat ?? ""}
-                        onValueChange={(value: "dng" | "jpg" | "raw") => onUpdate({ fileFormat: value })}
-                      >
-                        <SelectTrigger className="font-mono bg-input w-full md:max-w-xs data-[placeholder]:text-red-500 data-[placeholder]:font-bold">
-                          <SelectValue placeholder="Escolha o formato dos arquivos" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="jpg" className="font-mono">JPG</SelectItem>
-                          <SelectItem value="dng" className="font-mono">DNG</SelectItem>
-                          <SelectItem value="raw" className="font-mono">RAW</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex flex-wrap gap-4">
+                        {(["jpg", "dng", "raw"] as const).map((fmt) => (
+                          <label
+                            key={fmt}
+                            className="flex items-center gap-2 cursor-pointer font-mono text-xs uppercase"
+                          >
+                            <Checkbox
+                              checked={film.fileFormat === fmt}
+                              onCheckedChange={(c) => {
+                                // Comportamento de rádio: marcar um define o formato;
+                                // sempre fica exatamente um selecionado.
+                                if (c === true) onUpdate({ fileFormat: fmt })
+                              }}
+                            />
+                            {fmt.toUpperCase()}
+                          </label>
+                        ))}
+                      </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -1476,7 +1487,7 @@ function FilmEntryCard({
           </CardContent>
         </Card>
       </motion.div>
-    </TooltipProvider>
+    </>
   )
 }
 
@@ -1506,42 +1517,35 @@ function ServiceCategory({ title, services, selectedIds, onToggle }: ServiceCate
           const checked = selectedIds.includes(id)
 
           return (
-            <TooltipProvider key={id}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div
-                    className={`flex items-center justify-between min-w-0 p-3 border rounded cursor-pointer transition-colors ${
-                      checked
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/50"
-                    }`}
-                    onClick={() => onToggle(id)}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={() => onToggle(id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <span className="font-mono text-sm truncate">{service.name}</span>
-                      {service.description && (
-                        <Info className="h-3 w-3 text-muted-foreground shrink-0" />
-                      )}
-                    </div>
-
-                    <span className="font-mono font-bold shrink-0">
-                      {formatCurrency(service.price)}
+            <div
+              key={id}
+              className={`flex items-center justify-between min-w-0 p-3 border rounded cursor-pointer transition-colors ${
+                checked
+                  ? "border-primary bg-primary/10"
+                  : "border-border hover:border-primary/50"
+              }`}
+              onClick={() => onToggle(id)}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={() => onToggle(id)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <div className="min-w-0">
+                  <span className="font-mono text-sm truncate block">{service.name}</span>
+                  {service.description && (
+                    <span className="font-mono text-[11px] text-muted-foreground block">
+                      {service.description}
                     </span>
-                  </div>
-                </TooltipTrigger>
+                  )}
+                </div>
+              </div>
 
-                {service.description && (
-                  <TooltipContent className="bg-card border-primary max-w-xs">
-                    <p className="font-mono text-white text-xs">{service.description}</p>
-                  </TooltipContent>
-                )}
-              </Tooltip>
-            </TooltipProvider>
+              <span className="font-mono font-bold shrink-0">
+                {formatCurrency(service.price)}
+              </span>
+            </div>
           )
         })}
       </div>
