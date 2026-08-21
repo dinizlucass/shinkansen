@@ -9,7 +9,7 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, ShoppingBag, Loader2, Check, Tag, Maximize2, ChevronLeft, ChevronRight } from "lucide-react"
+import { X, ShoppingBag, Loader2, Check, Tag, Maximize2, ChevronLeft, ChevronRight, Search } from "lucide-react"
 import { useRouter } from "next/navigation"
 import type { User } from "@supabase/supabase-js"
 
@@ -42,6 +42,23 @@ const ENTREGA_LABEL: Record<DeliveryType, string> = {
 }
 function brl(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+}
+
+// Busca por nome ou atributos (marca, categoria, ISO, poses, processo, formato…).
+// Múltiplos termos funcionam como "E" (todos precisam bater).
+function filtrarProdutos(lista: Product[], q: string) {
+  const t = q.trim().toLowerCase()
+  if (!t) return lista
+  const termos = t.split(/\s+/)
+  return lista.filter(p => {
+    const hay = [
+      p.name, p.brand, p.description, p.process, p.film_format,
+      CATEGORIA_LABEL[p.category] ?? p.category,
+      p.iso != null ? `iso ${p.iso}` : "",
+      p.exposures != null ? `${p.exposures} poses ${p.exposures} exp` : "",
+    ].filter(Boolean).join(" ").toLowerCase()
+    return termos.every(term => hay.includes(term))
+  })
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -80,6 +97,8 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
   const [sheetAberta, setSheetAberta]     = React.useState(false)
   const [headerAberto, setHeaderAberto]   = React.useState(false)
   const [checkoutAberto, setCheckout]     = React.useState(false)
+  const [busca, setBusca]                 = React.useState("")
+  const [buscaAberta, setBuscaAberta]     = React.useState(false)
 
   // Flash de adição
   const [flashAtivo, setFlashAtivo]       = React.useState(false)
@@ -115,14 +134,31 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
     setSelId(null)
   }
 
-  const THUMBS_PER_ROW = 3
+  const produtosView = React.useMemo(() => filtrarProdutos(products, busca), [products, busca])
+
+  // Grade em "tijolinho": alterna linhas de 2 e 1 thumb (2,1,2,1...).
+  // Como as linhas são centralizadas, a de 1 fica deslocada em relação às
+  // de 2, criando o padrão de tijolo intercalado.
   const rows: Product[][] = []
-  for (let i = 0; i < products.length; i += THUMBS_PER_ROW) {
-    rows.push(products.slice(i, i + THUMBS_PER_ROW))
+  {
+    let i = 0
+    let doisNaLinha = true
+    while (i < produtosView.length) {
+      const take = doisNaLinha ? 2 : 1
+      rows.push(produtosView.slice(i, i + take))
+      i += take
+      doisNaLinha = !doisNaLinha
+    }
   }
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "var(--background)", display: "flex", flexDirection: "column", fontFamily: "'IBM Plex Mono', monospace", overflow: "hidden" }}>
+
+      {/* Esconde as barras de rolagem (mantendo o scroll funcional) */}
+      <style>{`
+        .loja-sem-barra { scrollbar-width: none; -ms-overflow-style: none; }
+        .loja-sem-barra::-webkit-scrollbar { width: 0; height: 0; display: none; }
+      `}</style>
 
       {/* ── HEADER ── */}
       <header style={{ height: 48, background: "var(--card)", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", padding: "0 12px", gap: 10, flexShrink: 0, zIndex: 20 }}>
@@ -130,6 +166,10 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
         <button onClick={() => setHeaderAberto(true)}
           style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "'Press Start 2P', monospace", fontSize: 8, color: "#e5271a", letterSpacing: "0.1em" }}>
           SELECT YOUR FILMS ▾
+        </button>
+        <button onClick={() => setBuscaAberta(v => !v)} aria-label="Buscar"
+          style={{ width: 30, height: 30, border: "1px solid var(--border)", borderRadius: 6, background: buscaAberta ? "rgba(229,39,26,0.12)" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: buscaAberta ? "#e5271a" : "var(--muted-foreground)", flexShrink: 0 }}>
+          <Search size={15} />
         </button>
         <div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--muted-foreground)" }}>
           {cart.items.length > 0 && (
@@ -140,13 +180,33 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
         </div>
       </header>
 
-      {/* ── CORPO: grade (80%) + faixa carrinho (20%) ── */}
+      {/* ── CORPO: coluna de produtos + faixa carrinho (rolagem só no carrinho) ── */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
 
-        {/* Grade de thumbs */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 8, position: "relative" }}>
+        {/* Coluna de produtos: logo + busca + grade (sem rolagem própria) */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
           <DiagonalBg />
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center", position: "relative", zIndex: 1 }}>
+
+          {/* Logo animada da Shinkansen (como no desktop) + busca */}
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "10px 8px 4px", position: "relative", zIndex: 2 }}>
+            <motion.div initial={{ scale: 0.92, opacity: 0.6 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 0.3 }}>
+              <AnimatedLogo className="w-28 h-auto" />
+            </motion.div>
+            {buscaAberta && (
+              <div style={{ width: "100%", display: "flex", gap: 6, alignItems: "center" }}>
+                <input autoFocus value={busca} onChange={e => setBusca(e.target.value)}
+                  placeholder="nome, ISO, processo, marca…"
+                  style={{ flex: 1, background: "var(--background)", border: "1px solid var(--border)", borderRadius: 4, padding: "7px 10px", fontFamily: "monospace", fontSize: 11, color: "var(--foreground)", outline: "none" }} />
+                {busca && (
+                  <button onClick={() => setBusca("")} aria-label="Limpar" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted-foreground)", padding: 4 }}><X size={14} /></button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Grade — não rola; use a busca para filtrar */}
+          <div style={{ flex: 1, overflow: "hidden", padding: 8, position: "relative", zIndex: 1 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
             {rows.map((row, rowIdx) => (
               <div key={rowIdx} style={{ display: "flex", gap: 8 }}>
                 {row.map(p => {
@@ -174,7 +234,7 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
                       onTouchMove={() => {
                         if (longPressRef.current) clearTimeout(longPressRef.current)
                       }}
-                      style={{ width: 100, height: 100, flexShrink: 0, border: `2px solid ${borderColor}`, borderRadius: 4, background: bgColor, position: "relative", cursor: semEstoque ? "not-allowed" : "pointer", overflow: "hidden", filter: semEstoque ? "grayscale(1)" : "none", opacity: semEstoque ? 0.45 : 1, WebkitTouchCallout: "none", userSelect: "none" }}>
+                      style={{ width: 84, height: 84, flexShrink: 0, border: `2px solid ${borderColor}`, borderRadius: 4, background: bgColor, position: "relative", cursor: semEstoque ? "not-allowed" : "pointer", overflow: "hidden", filter: semEstoque ? "grayscale(1)" : "none", opacity: semEstoque ? 0.45 : 1, WebkitTouchCallout: "none", userSelect: "none" }}>
                       <img src={p.images.thumb} alt={p.name} draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                       {isSelecionado && <div style={{ position: "absolute", top: 0, right: 0, width: 0, height: 0, borderTop: "12px solid #e5271a", borderLeft: "12px solid transparent" }} />}
                       {noCarrinho && (
@@ -190,7 +250,8 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
                           </div>
                         </div>
                       )}
-                      <div style={{ position: "absolute", bottom: 0, insetInline: 0, background: "rgba(0,0,0,0.65)", padding: "2px 3px", fontFamily: "monospace", fontSize: 7, color: isSelecionado ? "#e5271a" : noCarrinho ? "#22c55e" : "var(--muted-foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {/* Plaquinha: moldura preta + nome em vermelho vivo */}
+                      <div style={{ position: "absolute", bottom: 0, insetInline: 0, background: "#000", borderTop: "1px solid rgba(255,255,255,0.12)", padding: "3px 4px", fontFamily: "monospace", fontSize: 8, fontWeight: 700, letterSpacing: "0.02em", color: "#ff2b1f", textAlign: "center", textShadow: "0 1px 2px rgba(0,0,0,0.9)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {p.name.split(" ").slice(0, 2).join(" ")}
                       </div>
                     </div>
@@ -198,12 +259,18 @@ export function StoreMobile({ user, products, perfil, negativosPendentes }: Stor
                 })}
               </div>
             ))}
+              {produtosView.length === 0 && (
+                <div style={{ fontFamily: "monospace", fontSize: 11, color: "var(--muted-foreground)", padding: 24, textAlign: "center" }}>
+                  Nenhum produto encontrado.
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Faixa lateral 20% — carrinho resumido */}
-        <div style={{ width: "20%", minWidth: 64, borderLeft: "1px solid var(--border)", background: "var(--card)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "8px 4px", display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto" }}>
+        {/* Faixa lateral — carrinho resumido (mais estreita) */}
+        <div style={{ width: "15%", minWidth: 52, borderLeft: "1px solid var(--border)", background: "var(--card)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div className="loja-sem-barra" style={{ padding: "8px 4px", display: "flex", flexDirection: "column", gap: 6, flex: 1, overflowY: "auto", overscrollBehavior: "contain" }}>
             {cart.items.length === 0 ? (
               <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <ShoppingBag size={20} style={{ color: "var(--border)" }} />

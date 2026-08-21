@@ -5,7 +5,7 @@ import { createPortal } from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Volume2, VolumeX, X, Loader2, Tag, Check, Maximize2, ChevronLeft, ChevronRight } from "lucide-react"
+import { Volume2, VolumeX, X, Loader2, Tag, Check, Maximize2, ChevronLeft, ChevronRight, Search } from "lucide-react"
 import type { User } from "@supabase/supabase-js"
 
 import type { Product, DeliveryType } from "@/lib/store/types"
@@ -76,6 +76,23 @@ const ENTREGA_LABEL: Record<DeliveryType, string> = {
 
 function brl(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+}
+
+// Busca por nome ou atributos (marca, categoria, ISO, poses, processo, formato…).
+// Múltiplos termos funcionam como "E" (todos precisam bater).
+function filtrarProdutos(lista: Product[], q: string) {
+  const t = q.trim().toLowerCase()
+  if (!t) return lista
+  const termos = t.split(/\s+/)
+  return lista.filter(p => {
+    const hay = [
+      p.name, p.brand, p.description, p.process, p.film_format,
+      CATEGORIA_LABEL[p.category] ?? p.category,
+      p.iso != null ? `iso ${p.iso}` : "",
+      p.exposures != null ? `${p.exposures} poses ${p.exposures} exp` : "",
+    ].filter(Boolean).join(" ").toLowerCase()
+    return termos.every(term => hay.includes(term))
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -205,6 +222,8 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
   const [checkoutAberto, setCheckout] = React.useState(false)
   const [flashId, setFlashId]         = React.useState<string | null>(null)
   const [logoFrame, setLogoFrame]     = React.useState(0)
+  const [busca, setBusca]             = React.useState("")
+  const [buscaAberta, setBuscaAberta] = React.useState(false)
 
   React.useEffect(() => {
     const id = setInterval(() => setLogoFrame(f => (f + 1) % 3), 2400)
@@ -233,10 +252,12 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
     }
   }
 
+  const produtosView = React.useMemo(() => filtrarProdutos(products, busca), [products, busca])
+
   const THUMBS_PER_ROW = 4
   const rows: Product[][] = []
-  for (let i = 0; i < products.length; i += THUMBS_PER_ROW) {
-    rows.push(products.slice(i, i + THUMBS_PER_ROW))
+  for (let i = 0; i < produtosView.length; i += THUMBS_PER_ROW) {
+    rows.push(produtosView.slice(i, i + THUMBS_PER_ROW))
   }
 
   return (
@@ -255,6 +276,15 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
           <div style={{ fontFamily: "'Press Start 2P', monospace", fontSize: 15, color: "#e5271a", letterSpacing: "0.15em", marginTop: 2 }}>SELECT YOUR FILMS</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {buscaAberta && (
+            <input autoFocus value={busca} onChange={e => setBusca(e.target.value)}
+              placeholder="nome, ISO, processo, marca…"
+              style={{ width: 210, background: "var(--background)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 10px", fontFamily: "monospace", fontSize: 11, color: "var(--foreground)", outline: "none" }} />
+          )}
+          <button onClick={() => setBuscaAberta(v => !v)} aria-label="Buscar"
+            style={{ width: 34, height: 34, border: "1px solid var(--border)", borderRadius: 6, background: buscaAberta ? "rgba(229,39,26,0.12)" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: buscaAberta ? "#e5271a" : "var(--muted-foreground)" }}>
+            <Search size={15} />
+          </button>
           <GameMenuNav user={user} variant="horizontal" />
           <GlitchSKS />
           <button onClick={() => setMuted(m => !m)} style={{ width: 34, height: 34, border: "1px solid var(--border)", borderRadius: 6, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted-foreground)" }}>
@@ -424,7 +454,8 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
                               </div>
                             </div>
                           )}
-                          <div style={{ position: "absolute", bottom: 0, insetInline: 0, background: "rgba(0,0,0,0.6)", padding: "2px 4px", fontFamily: "monospace", fontSize: 8, color: isSelecionado ? "#e5271a" : noCarrinho ? "#22c55e" : "var(--muted-foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {/* Plaquinha: moldura preta + nome em vermelho vivo */}
+                          <div style={{ position: "absolute", bottom: 0, insetInline: 0, background: "#000", borderTop: "1px solid rgba(255,255,255,0.12)", padding: "3px 6px", fontFamily: "monospace", fontSize: 9, fontWeight: 700, letterSpacing: "0.02em", color: "#ff2b1f", textAlign: "center", textShadow: "0 1px 2px rgba(0,0,0,0.9)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {p.name.split(" ").slice(0, 2).join(" ")}
                           </div>
                         </motion.div>
@@ -434,6 +465,11 @@ function StoreDesktop({ user, products, perfil, negativosPendentes }: StoreClien
                 )
               })}
             </div>
+            {produtosView.length === 0 && (
+              <div style={{ textAlign: "center", marginTop: 24, fontFamily: "monospace", fontSize: 12, color: "var(--muted-foreground)" }}>
+                Nenhum produto encontrado.
+              </div>
+            )}
             <div style={{ textAlign: "center", marginTop: 20, fontFamily: "monospace", fontSize: 8, color: "var(--border)", letterSpacing: 3 }}>
               1° CLIQUE SELECIONA · 2° ADICIONA
             </div>
