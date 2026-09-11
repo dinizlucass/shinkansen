@@ -51,6 +51,76 @@ export function AccountClient({ user, profile }: AccountClientProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
 
+  // Troca de e-mail pelo próprio cliente (confirmação enviada ao e-mail novo).
+  const [showEmailEdit, setShowEmailEdit] = useState(false)
+  const [newEmail, setNewEmail] = useState("")
+  const [emailSaving, setEmailSaving] = useState(false)
+  const [emailMessage, setEmailMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
+  // Troca de senha pelo próprio cliente (já logado — aplica na hora).
+  const [showPwEdit, setShowPwEdit] = useState(false)
+  const [pw, setPw] = useState("")
+  const [pwConfirm, setPwConfirm] = useState("")
+  const [pwSaving, setPwSaving] = useState(false)
+  const [pwMessage, setPwMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
+  const handleChangePassword = async () => {
+    setPwMessage(null)
+    if (pw.length < 8) {
+      setPwMessage({ type: "error", text: "A senha deve ter ao menos 8 caracteres." })
+      return
+    }
+    if (pw !== pwConfirm) {
+      setPwMessage({ type: "error", text: "As senhas nao coincidem." })
+      return
+    }
+    setPwSaving(true)
+    const supabase = createClient()
+    const { error } = await supabase.auth.updateUser({ password: pw })
+    if (error) {
+      setPwMessage({ type: "error", text: error.message })
+    } else {
+      setPwMessage({ type: "success", text: "Senha atualizada com sucesso." })
+      setPw("")
+      setPwConfirm("")
+      setShowPwEdit(false)
+    }
+    setPwSaving(false)
+  }
+
+  const handleChangeEmail = async () => {
+    const email = newEmail.trim().toLowerCase()
+    setEmailMessage(null)
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailMessage({ type: "error", text: "Informe um e-mail valido." })
+      return
+    }
+    if (email === (user.email ?? "").trim().toLowerCase()) {
+      setEmailMessage({ type: "error", text: "Esse ja e o seu e-mail atual." })
+      return
+    }
+    setEmailSaving(true)
+    const supabase = createClient()
+    const redirectTo =
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (typeof window !== "undefined" ? window.location.origin : "")
+    const { error } = await supabase.auth.updateUser(
+      { email },
+      { emailRedirectTo: `${redirectTo}/account?emailChanged=1` },
+    )
+    if (error) {
+      setEmailMessage({ type: "error", text: error.message })
+    } else {
+      setEmailMessage({
+        type: "success",
+        text: `Enviamos um link de confirmacao para ${email}. O e-mail so muda depois que voce clicar nesse link.`,
+      })
+      setNewEmail("")
+      setShowEmailEdit(false)
+    }
+    setEmailSaving(false)
+  }
+
   const profileIsComplete = useMemo(
     () => isProfileComplete({ full_name: formData.full_name, phone: formData.phone }),
     [formData.full_name, formData.phone],
@@ -202,7 +272,55 @@ export function AccountClient({ user, profile }: AccountClientProps) {
 
                     <div className="space-y-2">
                       <Label className="font-mono text-xs uppercase">Email</Label>
-                      <Input value={user.email ?? ""} disabled className="font-mono" />
+                      <div className="flex gap-2">
+                        <Input value={user.email ?? ""} disabled className="font-mono" />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="font-mono uppercase bg-transparent shrink-0 text-xs"
+                          onClick={() => {
+                            setShowEmailEdit((v) => !v)
+                            setEmailMessage(null)
+                          }}
+                        >
+                          {showEmailEdit ? "Cancelar" : "Alterar"}
+                        </Button>
+                      </div>
+
+                      {showEmailEdit && (
+                        <div className="space-y-2 pt-2">
+                          <Input
+                            type="email"
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                            className="font-mono"
+                            placeholder="novo@email.com"
+                          />
+                          <Button
+                            type="button"
+                            className="font-mono uppercase w-full"
+                            onClick={handleChangeEmail}
+                            disabled={emailSaving || !newEmail.trim()}
+                          >
+                            {emailSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enviar link de confirmacao"}
+                          </Button>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            Enviaremos um link para o e-mail novo. A troca so acontece depois que voce confirmar por la.
+                          </p>
+                        </div>
+                      )}
+
+                      {emailMessage && (
+                        <div
+                          className={`p-2 border font-mono text-xs rounded ${
+                            emailMessage.type === "success"
+                              ? "border-green-500/40 bg-green-500/10 text-green-700"
+                              : "border-destructive/40 bg-destructive/10 text-destructive"
+                          }`}
+                        >
+                          {emailMessage.text}
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -259,6 +377,64 @@ export function AccountClient({ user, profile }: AccountClientProps) {
                         </p>
                       )}
                     </div>
+                  </div>
+
+                  <div className="border-t border-border pt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="font-mono text-xs uppercase">Senha</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="font-mono uppercase bg-transparent text-xs"
+                        onClick={() => {
+                          setShowPwEdit((v) => !v)
+                          setPwMessage(null)
+                        }}
+                      >
+                        {showPwEdit ? "Cancelar" : "Trocar senha"}
+                      </Button>
+                    </div>
+
+                    {showPwEdit && (
+                      <div className="space-y-2 pt-1">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Input
+                            type="password"
+                            value={pw}
+                            onChange={(e) => setPw(e.target.value)}
+                            className="font-mono"
+                            placeholder="Nova senha (min. 8)"
+                          />
+                          <Input
+                            type="password"
+                            value={pwConfirm}
+                            onChange={(e) => setPwConfirm(e.target.value)}
+                            className="font-mono"
+                            placeholder="Confirmar senha"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          className="font-mono uppercase w-full sm:w-auto"
+                          onClick={handleChangePassword}
+                          disabled={pwSaving || !pw || !pwConfirm}
+                        >
+                          {pwSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar nova senha"}
+                        </Button>
+                      </div>
+                    )}
+
+                    {pwMessage && (
+                      <div
+                        className={`p-2 border font-mono text-xs rounded ${
+                          pwMessage.type === "success"
+                            ? "border-green-500/40 bg-green-500/10 text-green-700"
+                            : "border-destructive/40 bg-destructive/10 text-destructive"
+                        }`}
+                      >
+                        {pwMessage.text}
+                      </div>
+                    )}
                   </div>
 
                   {message && (

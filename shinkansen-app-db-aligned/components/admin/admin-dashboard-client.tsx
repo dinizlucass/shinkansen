@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { FlaskConical, Loader2, Package, Save, Search, ShoppingBag } from "lucide-react"
+import { FlaskConical, Loader2, Mail, Package, Save, Search, ShoppingBag } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
@@ -203,6 +203,9 @@ export function AdminDashboardClient({
   )
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null)
   const [savingUserId, setSavingUserId] = useState<string | null>(null)
+  // Troca de e-mail do cliente pelo admin (id do usuário → novo e-mail digitado).
+  const [userEmails, setUserEmails] = useState<Record<string, string>>({})
+  const [savingEmailId, setSavingEmailId] = useState<string | null>(null)
   // Status de filme alterado no painel (id do filme → novo status), para
   // refletir na tela sem recarregar. Usado ao marcar "retirado".
   const [filmStatusOverride, setFilmStatusOverride] = useState<Record<string, string>>({})
@@ -381,6 +384,63 @@ export function AdminDashboardClient({
       }))
     } finally {
       setSavingUserId(null)
+    }
+  }
+
+  const updateUserEmail = async (user: AdminUser) => {
+    const novoEmail = (userEmails[user.id] ?? "").trim().toLowerCase()
+    if (!novoEmail) return
+    if (novoEmail === (user.email ?? "").trim().toLowerCase()) {
+      setUserFeedback((current) => ({
+        ...current,
+        [user.id]: { type: "error", text: "O novo e-mail e igual ao atual." },
+      }))
+      return
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(novoEmail)) {
+      setUserFeedback((current) => ({
+        ...current,
+        [user.id]: { type: "error", text: "E-mail invalido." },
+      }))
+      return
+    }
+    if (!confirm(`Trocar o e-mail de ${user.full_name || user.email} para ${novoEmail}?\n\nA troca e imediata e ja permite login com o novo e-mail.`)) {
+      return
+    }
+
+    setSavingEmailId(user.id)
+    setUserFeedback((current) => {
+      const copy = { ...current }
+      delete copy[user.id]
+      return copy
+    })
+
+    try {
+      const response = await fetch(`/api/admin/profiles/${user.id}/email`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: novoEmail }),
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok || !json?.ok) {
+        throw new Error(json?.error?.message || "Falha ao trocar o e-mail.")
+      }
+      setUserEmails((current) => ({ ...current, [user.id]: "" }))
+      setUserFeedback((current) => ({
+        ...current,
+        [user.id]: { type: "success", text: `E-mail trocado para ${novoEmail}.` },
+      }))
+      router.refresh()
+    } catch (error) {
+      setUserFeedback((current) => ({
+        ...current,
+        [user.id]: {
+          type: "error",
+          text: error instanceof Error ? error.message : "Falha ao trocar o e-mail.",
+        },
+      }))
+    } finally {
+      setSavingEmailId(null)
     }
   }
 
@@ -750,6 +810,39 @@ export function AdminDashboardClient({
                           {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                           Salvar link do usuario
                         </Button>
+                      </div>
+
+                      <div className="border-t border-border/60 pt-3 space-y-2">
+                        <p className="font-mono text-[10px] uppercase text-muted-foreground">
+                          Trocar e-mail do cliente (imediato)
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Input
+                            type="email"
+                            value={userEmails[user.id] ?? ""}
+                            onChange={(e) =>
+                              setUserEmails((current) => ({
+                                ...current,
+                                [user.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="novo@email.com"
+                            className="font-mono"
+                          />
+                          <Button
+                            variant="outline"
+                            className="font-mono uppercase bg-transparent shrink-0"
+                            onClick={() => updateUserEmail(user)}
+                            disabled={savingEmailId === user.id || !(userEmails[user.id] ?? "").trim()}
+                          >
+                            {savingEmailId === user.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Mail className="h-4 w-4 mr-2" />
+                            )}
+                            Trocar e-mail
+                          </Button>
+                        </div>
                       </div>
 
                       {userFeedback[user.id] && (
