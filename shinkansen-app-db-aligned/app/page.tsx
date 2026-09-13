@@ -2,15 +2,20 @@
  * app/page.tsx
  *
  * Busca slides no servidor (SSR) e passa para o HomeClient.
- * O cache é controlado pela tag "slides" — revalidado via
- * POST /api/slides/revalidate sempre que a pasta do Drive for atualizada.
+ * Os slides vêm de um JSON do próprio bundle (public/slides-data.json), então
+ * carregá-los a cada request é praticamente gratuito.
+ *
+ * IMPORTANTE: a página é dinâmica (force-dynamic). Ela lê a sessão do usuário
+ * (getUser) para renderizar o estado logado; se fosse cacheada (revalidate/ISR),
+ * o CDN serviria a versão DESLOGADA para todos — inclusive quem acabou de logar,
+ * que era o bug de "voltar para a home deslogado" atrás do Firebase.
  */
 
 import { createClient } from "@/lib/supabase/server"
 import { HomeClient }   from "@/components/home-client"
 import { obterSlides }  from "@/lib/drive-slides"
 
-export const revalidate = 3600 // fallback: revalida a cada 1h mesmo sem chamada manual
+export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
   const supabase = await createClient()
