@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+import { mergeChunks } from './single-cookie'
+
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -17,8 +19,9 @@ export async function createClient() {
         },
         setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
+            // Junta os pedaços num único `__session` (Firebase só repassa esse).
+            mergeChunks(cookiesToSet).forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options as never),
             )
           } catch {
           }
