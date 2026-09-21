@@ -13,6 +13,8 @@ type EfiPixCreateChargeInput = {
   amount: string
   pixKey: string
   payerMessage: string
+  /** Validade da cobrança em segundos (default 7 dias). Ex.: 86400 = 24h. */
+  expiracaoSegundos?: number
 }
 
 type EfiPixChargeResponse = {
@@ -301,13 +303,61 @@ export async function reviseEfiPixCharge(
   return { txid: c.txid, status: c.status, amount: c.valor.original, raw: c }
 }
 
+/** Consulta uma cobrança (para ler calendario.criacao, status, etc.). */
+export async function getEfiPixCharge(txid: string): Promise<EfiPixChargeResponse> {
+  const token = await getEfiPixAccessToken()
+  const { baseUrl } = getEfiPixConfig()
+  const response = await requestWithMtls<EfiPixChargeResponse | Record<string, unknown>>({
+    method: "GET",
+    url: `${baseUrl}/v2/cob/${txid}`,
+    headers: { Authorization: `Bearer ${token}`, "Accept-Encoding": "identity" },
+  })
+  if (!response.data || response.status >= 400 || !("txid" in response.data)) {
+    const message = getPixErrorMessage(response.data as Record<string, unknown> | null, response.rawBody)
+    throw new Error(`Efí consulta ${response.status}: ${message}`)
+  }
+  return response.data as EfiPixChargeResponse
+}
+
+/**
+ * Estende a validade (calendario.expiracao) de uma cobrança Pix imediata.
+ * Só funciona enquanto a cobrança está ATIVA. `expiracaoSegundos` é contado a
+ * partir da CRIAÇÃO da cobrança — o chamador calcula (agora − criacao) + 24h
+ * para que a cobrança passe a valer por mais 24h a partir de agora.
+ * Mantém o mesmo txid/QR/link.
+ */
+export async function extendEfiPixExpiration(
+  txid: string,
+  expiracaoSegundos: number,
+): Promise<EfiPixChargeResponse> {
+  const token = await getEfiPixAccessToken()
+  const { baseUrl } = getEfiPixConfig()
+  const body = JSON.stringify({ calendario: { expiracao: expiracaoSegundos } })
+  const response = await requestWithMtls<EfiPixChargeResponse | Record<string, unknown>>({
+    method: "PATCH" as any,
+    url: `${baseUrl}/v2/cob/${txid}`,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      "Accept-Encoding": "identity",
+      "Content-Length": String(Buffer.byteLength(body)),
+    },
+    body,
+  })
+  if (!response.data || response.status >= 400 || !("txid" in response.data)) {
+    const message = getPixErrorMessage(response.data as Record<string, unknown> | null, response.rawBody)
+    throw new Error(`Efí extensão ${response.status}: ${message}`)
+  }
+  return response.data as EfiPixChargeResponse
+}
+
 export async function createEfiPixCharge(input: EfiPixCreateChargeInput): Promise<CreatedEfiPixCharge> {
   const token = await getEfiPixAccessToken()
   const { baseUrl } = getEfiPixConfig()
 
   const body = JSON.stringify({
     calendario: {
-      expiracao: 60 * 60 * 24 * 7,
+      expiracao: input.expiracaoSegundos ?? 60 * 60 * 24 * 7,
     },
     valor: {
       original: input.amount,
