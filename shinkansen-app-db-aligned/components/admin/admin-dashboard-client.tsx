@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-type OrderStatus = "criado" | "recebido" | "aguardando_pagamento" | "pago" | "finalizado"
+type OrderStatus = "criado" | "recebido" | "aguardando_pagamento" | "pago" | "finalizado" | "cancelado"
 
 type FilmStatus =
   | "criado"
@@ -99,7 +99,11 @@ const statusMeta: Record<OrderStatus, { label: string; variant: "default" | "sec
   aguardando_pagamento: { label: "Aguardando Pagamento", variant: "secondary" },
   pago: { label: "Pago", variant: "default" },
   finalizado: { label: "Finalizado", variant: "default" },
+  cancelado: { label: "Cancelado", variant: "outline" },
 }
+
+// Status que o painel ainda não conhece não pode derrubar a página inteira.
+const metaDoStatus = (s: string) => statusMeta[s as OrderStatus] ?? { label: s, variant: "outline" as const }
 
 function normalizeLinkValue(value: string | null | undefined) {
   return typeof value === "string" ? value.trim() : ""
@@ -561,8 +565,8 @@ export function AdminDashboardClient({
                       </div>
 
                       <div className="flex items-center gap-3">
-                        <Badge variant={statusMeta[draft.status].variant} className="font-mono">
-                          {statusMeta[draft.status].label}
+                        <Badge variant={metaDoStatus(draft.status).variant} className="font-mono">
+                          {metaDoStatus(draft.status).label}
                         </Badge>
                         <div className="font-mono font-bold whitespace-nowrap">
                           R$ {Number(order.total_value || 0).toFixed(2)}
