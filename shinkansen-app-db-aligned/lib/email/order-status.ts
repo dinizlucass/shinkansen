@@ -302,6 +302,53 @@ export function isNotifiableOrderStatus(status: string): status is OrderStatusEm
 }
 
 /**
+ * E-mail de CANCELAMENTO de um pedido de serviço, enviado pelo laboratório.
+ * Explica que o pedido foi cancelado e informa o motivo.
+ */
+type OrderCancelledEmailInput = {
+  to: string
+  customerName?: string | null
+  orderId: string
+  reason: string
+}
+
+export async function sendOrderCancelledEmail(input: OrderCancelledEmailInput) {
+  const resend = getResendClient()
+  const from = `Shinkansen Films <${process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev"}>`
+  const replyTo = process.env.RESEND_REPLY_TO || undefined
+
+  const shortOrderId = input.orderId.slice(0, 8).toUpperCase()
+  const greeting = getGreeting(input.customerName)
+
+  const html = renderEmailLayout({
+    eyebrow: "Pedido cancelado",
+    title: "Seu pedido foi cancelado",
+    intro: `${greeting}, informamos que o seu pedido foi cancelado.`,
+    details: [
+      `Pedido: <strong>#${shortOrderId}</strong>`,
+      `Motivo: <strong>${escapeHtml(input.reason)}</strong>`,
+    ],
+    closing:
+      "Se tiver qualquer dúvida sobre o cancelamento, responda a este e-mail que a nossa equipe ajuda você.",
+  })
+
+  const response = await resend.emails.send({
+    from,
+    to: input.to,
+    cc: INTERNAL_CC_EMAIL,
+    subject: `Pedido #${shortOrderId} cancelado`,
+    html,
+    ...(replyTo ? { replyTo } : {}),
+  })
+
+  if (response.error) {
+    throw new Error(response.error.message)
+  }
+
+  return response.data
+}
+
+/**
  * E-mail de confirmação de COMPRA NA LOJA (produtos), enviado quando o
  * pagamento é confirmado. Mostra o id do pedido, os itens comprados (com
  * quantidade, valor unitário e subtotal) e o total pago, avisando que o

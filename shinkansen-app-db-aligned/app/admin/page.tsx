@@ -1,29 +1,19 @@
 import { redirect } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
+import { assertAdmin } from "@/lib/admin/revelacao"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { AdminDashboardClient } from "@/components/admin/admin-dashboard-client"
 
+export const dynamic = "force-dynamic"
+
 export default async function AdminPage() {
-  const supabase = await createClient()
-
-  // Verify user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect("/auth/login")
+  // Mesmo padrão de /admin/revelacao, /retiradas e /devolucao: a sessão só autentica;
+  // os dados vêm do cliente de serviço (não dependem do JWT do usuário nem de RLS).
+  const auth = await assertAdmin()
+  if (!auth.ok) {
+    redirect(auth.status === 401 ? "/auth/login" : "/dashboard")
   }
 
-  // Check if user is admin
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("is_admin")
-    .eq("id", user.id)
-    .single()
-
-  if (!profile?.is_admin) {
-    redirect("/dashboard")
-  }
+  const supabase = createAdminClient()
 
   // Fetch orders
   const { data: orders } = await supabase

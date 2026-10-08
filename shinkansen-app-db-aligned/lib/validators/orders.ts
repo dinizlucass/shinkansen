@@ -43,6 +43,7 @@ export const orderStatusEnum = z.enum([
   "aguardando_pagamento",
   "pago",
   "finalizado",
+  "cancelado",
 ])
 
 // Vocabulário único de status de filme — idêntico ao STATUS_FILME do interno

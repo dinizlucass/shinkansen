@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse }          from "next/server"
 import { createClient }                       from "@supabase/supabase-js"
 import { cancelEfiPixCharge }                 from "@/lib/payments/efi"
+import { assertAdmin }                        from "@/lib/admin/revelacao"
 
 function adminClient() {
   return createClient(
@@ -13,6 +14,10 @@ function adminClient() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await assertAdmin()
+  if (!auth.ok) {
+    return NextResponse.json({ ok: false, error: auth.message }, { status: auth.status })
+  }
   try {
     const { order_id } = await req.json()
     if (!order_id) {
